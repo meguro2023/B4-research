@@ -967,9 +967,11 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                                     id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
                                     # id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
                                     forward_back_car[-1*old_id] = [forward_car, back_car]
-                                    # # パーティクルを生成
-                                    # if car_flow==0:
-                                    #     lost_vehicle_particle[-1*old_id] = np.
+                                    # パーティクルを生成
+                                    if car_flow==0:
+                                        lost_vehicle_particle[-1*old_id] = np.full((particle_num, 1), yy)
+                                    else:
+                                        lost_vehicle_particle[-1*old_id] = np.full((particle_num, 1), xx)
                                     
                                     
 
