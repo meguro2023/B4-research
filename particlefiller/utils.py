@@ -554,7 +554,7 @@ def write_bbox_frame_id3_big(img, id, inverse_M, posi, prevented_switch_id, pt1,
 # track_trans.py用
 def write_bbox_frame_id2_big(img, id, inverse_M, posi, prevented_switch_id, pt1, pt2, a=0, b=0, c=0, d=0, e=0, f=0, g=0, h=0):    
     if id>0:
-        if id not in prevented_switch_id or id==4 or id==8:
+        if id not in prevented_switch_id:
             if id>=10 and id<100:
                 # 物体がエリア内にあるならid, class, bboxを描画
                 cv2.rectangle(img,
@@ -2475,6 +2475,166 @@ def merging_trans_image6(frame_idx, img, id_lane, id_posi, prevented_switch_id, 
     # 保存はここでやらなくていい
     # cv2.imwrite('merged_image2.png', merged_image)
     return merged_image
+
+
+
+# 補正画像を作成し，出力画像とマージする
+# これは鳥瞰画像に矢印つけないver
+def merging_trans_image7(img, id_lane, id_posi, prevented_switch_id, max_x, max_y, car_flow, lane_border, lost_vihicle_particle):
+    # 補正画像の元を作る
+    trans_img = np.ones((int(max_y), int(max_x)*2), dtype=np.uint8)
+    trans_img = cv2.cvtColor(trans_img, cv2.COLOR_BGR2RGB)
+
+    # 車線に線を引く
+    if car_flow==0:
+        for i in lane_border:
+            cv2.line(trans_img,
+                pt1=(i*2, 0),
+                pt2=(i*2, int(max_y)),
+                color=(255, 255, 255),
+                thickness=30,
+                lineType=cv2.LINE_4,
+                shift=0)
+    else:
+        for i in lane_border:
+            cv2.line(trans_img,
+                pt1=(0, i),
+                pt2=(int(max_x), i),
+                color=(255, 255, 255),
+                thickness=30,
+                lineType=cv2.LINE_4,
+                shift=0)
+    
+    # 枠線を作る
+    cv2.rectangle(trans_img, (10,10), (int(max_x)*2-10,int(max_y)-10), (255, 255, 255), thickness=30, lineType=cv2.LINE_8, shift=0)
+
+    # パーティクルを描画
+    for jj, p in enumerate(lost_vihicle_particle):
+        # 辞書のvalue(パーティクルのy座標)を抽出して出力
+        particles = p.values()
+        # リストに変換
+        particles = list(particles)
+        for y in particles:
+            for yy in y:
+                cv2.circle(trans_img, ((300*jj+150)*2, round(yy[0])), 30, (0, 0, 255), -1)
+
+
+
+        # shasen = -1
+        # for i, p in enumerate(particles):
+        #     # id_key[i]の車線を調べる
+        #     for index, lane in enumerate(id_lane):
+        #         if id_keys[i] in lane:
+        #             shasen = index
+        #             break
+        #     # パーティクルを更新した後に，失跡車両と新規車両がマッチングor緑色で普通に正しくマッチングされると，lost_vihicle_particleにはマイナスidが入っているが，id_laneには正のidが入る
+        #     # 今の所問題は起こさないと思われるため放置
+        #     # 435と436フレームで問題が確認
+
+        #     if shasen==-1:
+        #         continue
+        #     #     print('-1')
+        #     #     print(id_keys)
+        #     #     print(id_keys[i])
+        #     #     print(id_lane)
+        #     for y in p:
+        #         cv2.circle(trans_img, ((300*shasen+150)*2, round(y[0])), 30, (0, 0, 255), -1)
+
+
+
+    # 射影変換する際に用いた鳥瞰画像における黄色いエリア
+    #cv2.rectangle(trans_img, trans_lane[0].astype(int)-5, trans_lane[2].astype(int)-5, (24, 235, 249), thickness=20, lineType=cv2.LINE_8, shift=0)
+    # 全体の検出エリア
+    #cv2.polylines(trans_img, [trans_lane_look.astype(int)], isClosed=True, color=(255,0,255), thickness=20)
+
+
+    #cv2.imwrite('trans_img.jpg', trans_img)
+
+    # 元画像での畳四隅座標を射影変換し鳥瞰画像にマーキング
+    # for src_pt in pts1:
+    #     dst_pt = transform_pt(src_pt, M)
+    #     cv2.drawMarker(img3, dst_pt, (0, 255, 0), markerSize=20)
+        
+    # 補正画像に位置をマーキング
+    # その上にidを表示
+    # bbox作った時の位置を保存（車が縦に動く場合(car_flow=0)はtopとbottom, 車が横に動く場合(car_flow=1)はrightとleftを保存）
+    # {id: [topまたはleft, bottomまたはright]}
+    bbox_posi = {}
+    for i, trans_posi in enumerate(id_posi):
+        for j, posi in enumerate(trans_posi):
+            # idが正なら緑，ただし，bbox補完で付け替えたidは水色
+            if id_lane[i][j]>0:
+                if id_lane[i][j] not in prevented_switch_id or id_lane[i][j]==4 or id_lane[i][j]==8:
+                    color_num = (50, 205, 154)
+                else:
+                    #color_num = (255,204,0)
+                    color_num = (255, 191, 0)
+            # マイナスidなら赤
+            else:
+                color_num = (0,0,255)
+            # trans_img = cv2.circle(trans_img, (int(posi[0]),int(posi[1])), 100, color_num, -1)
+            # 正方形を描画
+            x, y = int(posi[0])*2, int(posi[1])
+            
+            square_size = 340
+            a = x - square_size // 2
+            b = y - square_size // 2
+            c = x + square_size // 2
+            d = y + square_size // 2
+            top_left = (a, b)
+            bottom_right = (c, d)
+            if car_flow==0:
+                bbox_posi[id_lane[i][j]] = [(x, b), (x, d)]
+            else:
+                bbox_posi[id_lane[i][j]] = [(a, y), (c, y)]
+            cv2.rectangle(trans_img, top_left, bottom_right, color=color_num, thickness=30)
+            # trans_img = cv2.circle(trans_img, (posi[0],posi[1]), 140, color_num, -1)
+            
+            if 0<id_lane[i][j] and id_lane[i][j]<10:
+                cv2.putText(trans_img,
+                    text=str(id_lane[i][j]),
+                    org=(int(posi[0])*2-70,int(posi[1])+70),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=7,
+                    color=(255,255,255),
+                    thickness=24,
+                    lineType=cv2.LINE_4)
+            else:
+                cv2.putText(trans_img,
+                    text=str(id_lane[i][j]),
+                    org=(int(posi[0])*2-145,int(posi[1])+70),
+                    fontFace=cv2.FONT_HERSHEY_SIMPLEX,
+                    fontScale=7,
+                    color=(255,255,255),
+                    thickness=24,
+                    lineType=cv2.LINE_4)
+
+    h1, w1, _ = img.shape # 出力画像
+    h2, w2, _ = trans_img.shape # 補正画像
+
+    new_h = h1
+    aspect_ratio = float(w2) / float(h2)
+    new_w = int(new_h * aspect_ratio)
+
+    resized_bird_img = cv2.resize(trans_img, (new_w, new_h))
+
+    #cv2.imwrite('resized_bird_img.jpg', resized_bird_img)
+
+    # 画像を横に結合
+    merged_image = np.hstack((img, resized_bird_img))
+
+    # if frame_idx==276:
+    #     cv2.imwrite('merged_image276.jpg', merged_image)
+    # if frame_idx==285:
+    #     cv2.imwrite('merged_image285.jpg', merged_image)
+
+    # 画像の表示
+    # plt.imshow(merged_image)
+    # plt.show()
+    # 保存はここでやらなくていい
+    # cv2.imwrite('merged_image2.png', merged_image)
+    return merged_image
+
 
 
 
