@@ -308,8 +308,8 @@ elif count_place=='南千住_big':
 
 
 elif count_place=='仲町二丁目_下り_big':
-    DETECTION_FILE_NAME = '/Users/meguro/Documents/谷口研/修士卒研/particlefiller/data/仲町二丁目/nakacho_jutai.txt'
-    FRAME_PATH = 'data/仲町二丁目/frame/'
+    DETECTION_FILE_NAME = '/Users/meguro/Documents/谷口研/data/仲町二丁目/nakacho_jutai.txt'
+    FRAME_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/frame/'
     # test用
     # テスト動画のパス
     # source = "/home/meguro/mydatasets/MLIT/survey/仲町二丁目_ID_Switch.mov"
@@ -368,6 +368,8 @@ elif count_place=='仲町二丁目_下り_big':
     masked_area = [[(0, 0), (1920, 400)],[(1683, 193), (222, 335)],[(950,373), (1101,521)],[(1240,396),(1616,617)]]
     # パーティクルの数を設定
     particle_num = 50
+    # ガウシアンノイズの分散
+    gauss_std = 50
 
 
     # track_huhu.py用
