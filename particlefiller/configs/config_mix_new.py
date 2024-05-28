@@ -30,7 +30,7 @@ count_place = '仲町二丁目_下り_big'
 # track_particle.py用のpath
 # BATH_PATH = '/home/meguro/mydatasets/track_particle/仲町二丁目/'
 # OUTPUT_PATH = BATH_PATH+count_place+'/'
-OUTPUT_PATH = '/Users/meguro/Documents/谷口研/修士卒研/particlefiller/data/仲町二丁目/output/'
+OUTPUT_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/output_particle/'
 
 # track_memory.py用のpath
 # detection.txtの名前変更忘れずに
