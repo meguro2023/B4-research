@@ -11,7 +11,7 @@ def natural_keys(text):
     return [ atoi(c) for c in re.split(r'(\d+)', text) ]
 
 img_array = []
-for filename in sorted(glob.glob("/Users/meguro/Documents/谷口研/修士卒研/particlefiller/data/田野倉/output_frame2/*.jpg")):
+for filename in sorted(glob.glob("/Users/meguro/Documents/谷口研/data/仲町二丁目/frame/*.jpg")):
     img = cv2.imread(filename)
     height, width, layers = img.shape
     size = (width, height)
@@ -23,7 +23,7 @@ for filename in sorted(glob.glob("/Users/meguro/Documents/谷口研/修士卒研
     # if i>=15000:
     #     break
 i = 0
-for filename in sorted(glob.glob("/Users/meguro/Documents/谷口研/修士卒研/particlefiller/data/田野倉/output_frame2/*.jpg"), key=natural_keys):
+for filename in sorted(glob.glob("/Users/meguro/Documents/谷口研/data/仲町二丁目/frame/*.jpg"), key=natural_keys):
     img = cv2.imread(filename)
     # height, width, layers = img.shape
     # size = (width, height)
@@ -34,7 +34,7 @@ for filename in sorted(glob.glob("/Users/meguro/Documents/谷口研/修士卒研
     # if i>=15000:
     #     break
 
-name = '/Users/meguro/Documents/谷口研/修士卒研/particlefiller/data/田野倉/output_frame2/particle_video.mp4'
+name = '//Users/meguro/Documents/谷口研/data/仲町二丁目/particle_video.mp4'
 out = cv2.VideoWriter(name, cv2.VideoWriter_fourcc(*'mp4v'), 30.0, size)
 
 for i in range(len(img_array)):
