@@ -1417,7 +1417,73 @@ def find_the_nearest_minus_id(id_lane, id_posi, new_ii, car_flow, matching_range
 
     return nearest_minus_idx
 
-    
+
+# 車線内の一番近いidを探してくる
+# その前に、前フレームで重なっているbboxがないか判定
+# 具体的には、鳥瞰画像上で、前フレームのあるidと、今フレームのあるidの正のidが近すぎたらそれらをマッチングする。
+# それ以降は負のidのみ見て、マッチング範囲内であるかどうかを判定する
+
+# returnはインデックス値
+# すでに一つの車線の状態の変数をもらっている
+def find_the_nearest_minus_id2(id_trajectory_posi_before, id_lane_before, id_lane, id_posi, new_ii, car_flow, matching_range, overlapping_range_num):
+    # flagが1の場合、前フレームの正idと今フレームの正idがマッチングできたことを示す
+    flag = 0
+    before_ii = 0
+    nearest_minus_idx = -1
+    # 前フレームの追跡中のidと、今フレームの追跡中のidが鳥瞰画像上で近すぎたらマッチング
+    for before_ii, before_posi in enumerate(id_trajectory_posi_before):
+        if car_flow==0:        
+            if id_lane_before[before_ii]<0:
+                continue
+            else:
+                if abs(id_posi[new_ii][1] - before_posi[1]) < overlapping_range_num:
+                    flag = 1
+        else:
+            if id_lane_before[before_ii]<0:
+                continue
+            else:
+                if abs(id_posi[new_ii][0] - before_posi[0]) < overlapping_range_num:
+                    flag = 1    
+        if flag==1:
+            break
+        
+
+    if flag==0:
+        # [[ユークリッド距離, 0(index番号)],[ユークリッド距離, 1],...]
+        distance_index = []
+        for minus_idx, minus_id in enumerate(id_lane):
+            if minus_id<0:
+                #dist = np.linalg.norm(np.array(id_posi[new_ii]) - np.array(id_posi[minus_idx]))
+                if car_flow==0:
+                    dist = abs(id_posi[minus_idx][1]-id_posi[new_ii][1])
+                else:
+                    dist = abs(id_posi[minus_idx][0]-id_posi[new_ii][0])
+                distance_index.append([dist, minus_idx])
+        if len(distance_index)>0:
+            distance_index.sort()
+            #print(distance_index)
+            if distance_index[0][0]<matching_range:
+                nearest_minus_idx = distance_index[0][1]
+            else:
+                nearest_minus_idx = -1
+            # この範囲内なら対応付ける
+            # 範囲は一次元で判定
+            # 車が縦に流れていたらy座標のみ注目
+            # if car_flow==0:
+            #     if abs(id_posi[new_ii][1] - id_posi[nearest_minus_idx][1])<matching_range:
+            #         pass
+            #     else:
+            #         nearest_minus_idx = -1
+            # else:
+            #     if abs(id_posi[new_ii][0] - id_posi[nearest_minus_idx][0])<matching_range:
+            #         pass
+            #     else:
+            #         nearest_minus_idx = -1
+        else:
+            nearest_minus_idx = -1
+
+    return nearest_minus_idx, flag, before_ii
+
 
 
 # 補正画像を作成し，出力画像とマージする
@@ -2688,3 +2754,80 @@ def point_slide_to_center2(trans_pt, class_name, car_flow, trajectory_point, id)
     return trans_pt
 
 
+# trackingデータをソートする
+# その前に、対応付けがすでに存在するidはここで付け替えてしまう。
+def sorting_tracking_data(id_num, class_num, bbox_center, bbox_frame, conf_list, removed_id):
+    
+    # 二次元を一次元配列にする
+    flattened_id_num = id_num.flatten()
+    # もし，過去に対応付けidを扱う場合は，対応付けしたidの中で一番小さいidとして扱う
+    # id対応付けの対象は，同じ車体にほぼ同じbboxを付けた場合
+    # まずは，removed_id=[[7, 9], [10, 7]]のような状態を[[7, 9, 10]]のようにする
+    result_dict = {}
+    for sublist in removed_id:
+        sublist.sort()
+        key = sublist[0]
+        if key in result_dict:
+            result_dict[key].extend(sublist[1:])
+        else:
+            result_dict[key] = sublist
+    removed_id = list(result_dict.values())
+    removed_id_back = removed_id.copy()
+    all_remove_id = [item for sublist in removed_id for item in sublist]
+    
+    d = [] # 削除するindexを格納
+    # すでに付け替え先があるのなら、先に付け替えてしまう
+    for ii, id in enumerate(id_num):
+        if int(id[0]) in all_remove_id:
+            for sublist in removed_id:
+                if int(id[0]) in sublist:
+                    # idの付け替え先があるっても、そのidがすでに存在しているなら、今見ているidは削除する
+                    if sublist[0] in flattened_id_num:
+                        d.append(ii)
+                        break
+                    # idを対応する一番小さいidに付け替え
+                    else:
+                        out = sublist[0]
+                        id_num[ii][0] = out
+                        flattened_id_num = np.append(flattened_id_num, out)
+                        break
+    
+    # 対応付けのidを見て、付け替え先があったが、すでに検出リストにいる場合は削除
+    id_num = np.delete(id_num, d, axis=0)
+    class_num = np.delete(class_num, d, axis=0)
+    bbox_center = np.delete(bbox_center, d, axis=0)
+    bbox_frame = np.delete(bbox_frame, d, axis=0)
+    conf_list = np.delete(conf_list, d, axis=0)
+
+    # id_numをソートし、そのインデックスを取得
+    sorted_indices = np.argsort(id_num, axis=0).flatten()
+    # インデックスに基づいて他を再配置
+    sorted_class_num = class_num[sorted_indices]
+    sorted_bbox_center = bbox_center[sorted_indices]
+    sorted_bbox_frame = bbox_frame[sorted_indices]
+    sorted_conf_list = conf_list[sorted_indices]
+
+    return np.sort(id_num, axis=0), sorted_class_num, sorted_bbox_center, sorted_bbox_frame, sorted_conf_list, removed_id, removed_id_back, all_remove_id
+
+
+
+# 鳥瞰画像上で今フレームの追跡中のidが重なっていないかを判定
+def delete_overlapping_id(trans_pt, id_trajectory_posi, in_out, car_flow, overlapping_range_num):
+
+    flag = 0
+    if car_flow==0:
+        for ii, posi in enumerate(id_trajectory_posi[in_out]):
+            if abs(trans_pt[1]-posi[1])<overlapping_range_num:
+                flag = 1
+                break
+        if flag==1:
+            return ii, flag
+    else:
+        for ii, posi in enumerate(id_trajectory_posi[in_out]):
+            if abs(trans_pt[0]-posi[0])<overlapping_range_num:
+                flag = 1
+                break
+        if flag==1:
+            return ii, flag
+
+    return -1, flag

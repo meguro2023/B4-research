@@ -30,7 +30,8 @@ count_place = '仲町二丁目_下り_big'
 # track_particle.py用のpath
 # BATH_PATH = '/home/meguro/mydatasets/track_particle/仲町二丁目/'
 # OUTPUT_PATH = BATH_PATH+count_place+'/'
-OUTPUT_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/output_particle/'
+#OUTPUT_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/output_particle/'
+OUTPUT_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/test/'
 
 # track_memory.py用のpath
 # detection.txtの名前変更忘れずに
@@ -323,7 +324,7 @@ elif count_place=='仲町二丁目_下り_big':
     # カウント結果の出力画像を何フレームに一回取るか
     output_image_space = 1
     # ファイル出力を行わない場合はFalse
-    output_do_or_not = True
+    output_do_or_not = False
  
     # track_huhu.py用
     # ここの4エリアはあらかじめ求めておく
@@ -370,6 +371,8 @@ elif count_place=='仲町二丁目_下り_big':
     particle_num = 50
     # ガウシアンノイズの分散
     gauss_std = 50
+    # 鳥瞰画像上の縦、または横で、追跡中の車両同士が、この数より近かったら、それらは同じ車両だとみなす
+    overlapping_range_num = 100
 
 
     # track_huhu.py用
