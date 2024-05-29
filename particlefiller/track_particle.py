@@ -274,7 +274,11 @@ with open(DETECTION_FILE_NAME, 'r') as file:
         lost_vehicle_particle = []
         lost_vehicle_particle = []
         # 失跡車両のパーティクルの範囲
-        particle_range = []
+        # 前フレームの失跡車両を今フレームに更新した失跡車両のパーティクルの情報(min,max)のみを保存すれば良い
+        # 前フレームにいた車両が1フレームでid_switchしたときの対策は、find_the_nearest_minus_id2でやった
+        # 今フレームで同じ車両に複数idついた場合の対策はdelete_overlapping_idでやった
+        particle_range = [] # [{1: [10. 30]}, {}]みたいな
+
         for _ in range(lane_num):
             id_lane.append([])
             id_lane_xyxy.append([])
@@ -733,7 +737,8 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                                         lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dy + gauss_noise
                                     else:
                                         lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dx + gauss_noise
-
+                                    # ここで、失跡車両ごとに、パーティクルの最小値(min)と最大値(max)を求め、保存。マッチングで使う                                    
+                                    particle_range[jj][minus_id] = [np.min(lost_vehicle_particle[jj][minus_id]), np.max(lost_vehicle_particle[jj][minus_id])]
 
                         # 仮bboxを動かして，それが枠外だった場合，それは廃棄する
                         else:
@@ -833,7 +838,7 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                         # flag=1なら前フレームのある追跡中のidが、1フレームでid_switchしたと判断し、付け替える
                         # flag=0で、nearest_minus_idxが0以上なら、そのindexのマイナスidとnew_idをマッチングする
                         # ここが失跡車両マッチング
-                        nearest_minus_idx, flag, before_ii = my_function.find_the_nearest_minus_id2(id_trajectory_posi_before[jj], id_lane_before[jj], id_lane[jj], id_trajectory_posi[jj], new_ii, car_flow, matching_range, overlapping_range_num)
+                        nearest_minus_idx, flag, before_ii = my_function.find_the_nearest_minus_id2(id_trajectory_posi_before[jj], id_lane_before[jj], id_lane[jj], id_trajectory_posi[jj], new_ii, car_flow, matching_range, overlapping_range_num, particle_range[jj])
 
                         if flag==1:
                             if id_lane_before[jj][before_ii] in id_lane[jj]:
@@ -843,6 +848,7 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                                 remove_minus_id.append(new_id)
                                 # id_lane[jj][new_ii] = id_lane_before[jj][before_ii]
                             else:
+                                removed_id.append([id_lane_before[jj][before_ii], id_lane[jj][new_ii]]) # 追加、これ必要じゃないか？
                                 id_lane[jj][new_ii] = id_lane_before[jj][before_ii]
                             # print(id_lane[jj][new_ii], id_lane_before[jj][before_ii])
                         

@@ -1425,14 +1425,14 @@ def find_the_nearest_minus_id(id_lane, id_posi, new_ii, car_flow, matching_range
 
 # returnはインデックス値
 # すでに一つの車線の状態の変数をもらっている
-def find_the_nearest_minus_id2(id_trajectory_posi_before, id_lane_before, id_lane, id_posi, new_ii, car_flow, matching_range, overlapping_range_num):
+def find_the_nearest_minus_id2(id_trajectory_posi_before, id_lane_before, id_lane, id_posi, new_ii, car_flow, matching_range, overlapping_range_num, particle_range):
     # flagが1の場合、前フレームの正idと今フレームの正idがマッチングできたことを示す
     flag = 0
     before_ii = 0
     nearest_minus_idx = -1
     # 前フレームの追跡中のidと、今フレームの追跡中のidが鳥瞰画像上で近すぎたらマッチング
     for before_ii, before_posi in enumerate(id_trajectory_posi_before):
-        if car_flow==0:        
+        if car_flow==0:
             if id_lane_before[before_ii]<0:
                 continue
             else:
@@ -1465,7 +1465,21 @@ def find_the_nearest_minus_id2(id_trajectory_posi_before, id_lane_before, id_lan
             if distance_index[0][0]<matching_range:
                 nearest_minus_idx = distance_index[0][1]
             else:
-                nearest_minus_idx = -1
+                # 300以内でマッチングできなかったら、その新規車両が失跡車両のパーティクルに入っているかどうかを確認し、入っていた場合、その一番近い追跡車両とマッチングする
+                # 具体的には、ソートしたリストdistance_indexを先頭から見ていって、新規車両がパーティクル内入っているマイナスidを見つける
+                # どのマイナスidもパーティクルに入っていなかったらnearest_minus_idx=-1を返す
+                for near_ii in distance_index:
+                    if car_flow==0:
+                        # 新規車両の近くにいる失跡車両のパーティクルのminとmaxの間にその新規車両があるのなら
+                        if particle_range[id_lane[near_ii[1]]][0]<=id_posi[new_ii][1] and id_posi[new_ii][1]<=particle_range[id_lane[near_ii[1]]][1]:
+                            nearest_minus_idx = near_ii[1]
+                            break
+                    else:
+                        # 新規車両の近くにいる失跡車両のパーティクルのminとmaxの間にその新規車両があるのなら
+                        if particle_range[id_lane[near_ii[1]]][0]<=id_posi[new_ii][0] and id_posi[new_ii][0]<=particle_range[id_lane[near_ii[1]]][1]:
+                            nearest_minus_idx = near_ii[1]
+                            break
+
             # この範囲内なら対応付ける
             # 範囲は一次元で判定
             # 車が縦に流れていたらy座標のみ注目
@@ -1479,8 +1493,7 @@ def find_the_nearest_minus_id2(id_trajectory_posi_before, id_lane_before, id_lan
             #         pass
             #     else:
             #         nearest_minus_idx = -1
-        else:
-            nearest_minus_idx = -1
+
 
     return nearest_minus_idx, flag, before_ii
 

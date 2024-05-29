@@ -357,7 +357,7 @@ elif count_place=='仲町二丁目_下り_big':
     #lane_border = [800]
     lane_border = [300]
     # 新idは，この値の範囲内にマイナスidがある場合は，マイナスidが割り当てられる
-    matching_range = 800
+    matching_range = 300
     # 一度に移動する横の移動を何ピクセルまで許すか
     horizontal_limit_pixel = 1
     # 何フレーム分の記録を残し，それを使って移動予測をするか．10フレーム分保存しておく
