@@ -128,6 +128,7 @@ save_trajectory = config.save_trajectory
 particle_num = config.particle_num
 gauss_std = config.gauss_std
 overlapping_range_num = config.overlapping_range_num
+constant_speed = config.constant_speed
 
 
 ### クラス名とクラス番号の紐付け
@@ -240,10 +241,10 @@ with open(DETECTION_FILE_NAME, 'r') as file:
         conf_list = literal_eval(conf_list)
 
 
-        if frame_idx%100==0:
+        if frame_idx%1000==0:
             print(str(frame_idx) + 'フレーム目')
     
-        # if frame_idx<200:
+        # if frame_idx<88000:
         #     continue
 
         # print(frame_idx)
@@ -271,7 +272,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
         id_trajectory_posi = []
         # 失跡車両が発生したら，決められた数のパーティクルをまく
         # {マイナスid: np.array(2, パーティクルの数)}
-        lost_vehicle_particle = []
         lost_vehicle_particle = []
         # 失跡車両のパーティクルの範囲
         # 前フレームの失跡車両を今フレームに更新した失跡車両のパーティクルの情報(min,max)のみを保存すれば良い
@@ -574,47 +574,50 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                             back_car = None
                         # 前と後ろの車が両方見つからなかった場合は，t-2フレームとt-1フレームの自分の移動量を見て動かす
                         if forward_car==None and back_car == None:
-                            # 修正
-                            # 位置予測の赤いbboxが動かなくなる時があるので，10フレーム前とかの情報を使って頑張って動かす
-                            # 10フレーム前から見ていって，なるべく古い情報を持ってくる
-                            # 2フレーム前には必ずある
-                            frag = 0
-                            for iii, k in enumerate(reversed(id_lane_before_more_10)):
-                                f = save_frame_num-iii-1 # 後ろから見ていく 9, 8, 7, 6...
-                                for jjj, kk in enumerate(k):
-                                    if minus_id in kk:
-                                        idx = kk.index(minus_id)
-                                        t_2 = id_trajectory_posi_before_more_10[f][jjj][idx]
-                                        frag = 1
-                                        break
-                                    elif minus_id*(-1) in kk:
-                                        idx = kk.index(minus_id*(-1))
-                                        t_2 = id_trajectory_posi_before_more_10[f][jjj][idx]
-                                        frag = 1
-                                        break
-                                if frag==1:
-                                    break
+                            # 修正2: 等速直線運動（非追従状態）の時は、あらかじめ決めておいた速度で動かす
+                            # # 修正
+                            # # 位置予測の赤いbboxが動かなくなる時があるので，10フレーム前とかの情報を使って頑張って動かす
+                            # # 10フレーム前から見ていって，なるべく古い情報を持ってくる
+                            # # 2フレーム前には必ずある
+                            # frag = 0
+                            # for iii, k in enumerate(reversed(id_lane_before_more_10)):
+                            #     f = save_frame_num-iii-1 # 後ろから見ていく 9, 8, 7, 6...
+                            #     for jjj, kk in enumerate(k):
+                            #         if minus_id in kk:
+                            #             idx = kk.index(minus_id)
+                            #             t_2 = id_trajectory_posi_before_more_10[f][jjj][idx]
+                            #             frag = 1
+                            #             break
+                            #         elif minus_id*(-1) in kk:
+                            #             idx = kk.index(minus_id*(-1))
+                            #             t_2 = id_trajectory_posi_before_more_10[f][jjj][idx]
+                            #             frag = 1
+                            #             break
+                            #     if frag==1:
+                            #         break
                             
-                            # id_lane_before_more内は必ずminus_idか-1*minus_idが存在する
-                            # t-2フレーム時の基準点の座標を持ってくる
-                            # if minus_id in id_lane_before_more[jj]:    
-                            #     idx = id_lane_before_more[jj].index(minus_id)
-                            #     t_2 = id_trajectory_posi_before_more[jj][idx]
+                            # # id_lane_before_more内は必ずminus_idか-1*minus_idが存在する
+                            # # t-2フレーム時の基準点の座標を持ってくる
+                            # # if minus_id in id_lane_before_more[jj]:    
+                            # #     idx = id_lane_before_more[jj].index(minus_id)
+                            # #     t_2 = id_trajectory_posi_before_more[jj][idx]
+                            # # else:
+                            # #     idx = id_lane_before_more[jj].index(-1*minus_id)
+                            # #     t_2 = id_trajectory_posi_before_more[jj][idx]
+                            # # t-1フレーム時の基準点の座標を持ってくる
+                            # if minus_id in id_lane_before[jj]:    
+                            #     idx = id_lane_before[jj].index(minus_id)
+                            #     t_1 = id_trajectory_posi_before[jj][idx]
                             # else:
-                            #     idx = id_lane_before_more[jj].index(-1*minus_id)
-                            #     t_2 = id_trajectory_posi_before_more[jj][idx]
-                            # t-1フレーム時の基準点の座標を持ってくる
-                            if minus_id in id_lane_before[jj]:    
-                                idx = id_lane_before[jj].index(minus_id)
-                                t_1 = id_trajectory_posi_before[jj][idx]
-                            else:
-                                idx = id_lane_before[jj].index(-1*minus_id)
-                                t_1 = id_trajectory_posi_before[jj][idx]
-                            # 移動量を計算
-                            # dx = t_1[0] - t_2[0]
-                            # dy = t_1[1] - t_2[1]
-                            dx = round((t_1[0] - t_2[0])/f)
-                            dy = round((t_1[1] - t_2[1])/f)
+                            #     idx = id_lane_before[jj].index(-1*minus_id)
+                            #     t_1 = id_trajectory_posi_before[jj][idx]
+                            # # 移動量を計算
+                            # # dx = t_1[0] - t_2[0]
+                            # # dy = t_1[1] - t_2[1]
+                            # dx = round((t_1[0] - t_2[0])/f)
+                            # dy = round((t_1[1] - t_2[1])/f)
+                            dx = constant_speed
+                            dy = constant_speed
                             # 横移動は考慮しないようにする
                             if car_flow==0:
                                 dx=0
@@ -719,26 +722,27 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                             # 入っていたらid_lane[ii]にマイナスidをappend
                             if in_out>=0:
                                 if in_out==jj:
-                                    id_lane[jj].append(minus_id)
-                                    id_trajectory_posi[jj].append([xx, yy])
-                                    # マイナスidのbboxを動かすため，t-1フレーム時のマイナスidのbbox座標を持ってくる
-                                    if minus_id in id_lane_before[jj]:    
-                                        idx = id_lane_before[jj].index(minus_id)
-                                        t_1_frame = id_lane_xyxy_before[jj][idx]
-                                    else:
-                                        idx = id_lane_before[jj].index(-1*minus_id)
-                                        t_1_frame = id_lane_xyxy_before[jj][idx]
-                                    id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
-                                    #id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
-                                    forward_back_car[minus_id] = [forward_car, back_car]
-                                    # ガウシアンノイズを発生（平均，分散，データ長）
-                                    gauss_noise = np.random.normal(0, gauss_std, (particle_num, 1))
-                                    if car_flow==0:
-                                        lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dy + gauss_noise
-                                    else:
-                                        lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dx + gauss_noise
-                                    # ここで、失跡車両ごとに、パーティクルの最小値(min)と最大値(max)を求め、保存。マッチングで使う                                    
-                                    particle_range[jj][minus_id] = [np.min(lost_vehicle_particle[jj][minus_id]), np.max(lost_vehicle_particle[jj][minus_id])]
+                                    if minus_id not in id_lane[jj]:
+                                        id_lane[jj].append(minus_id)
+                                        id_trajectory_posi[jj].append([xx, yy])
+                                        # マイナスidのbboxを動かすため，t-1フレーム時のマイナスidのbbox座標を持ってくる
+                                        if minus_id in id_lane_before[jj]:    
+                                            idx = id_lane_before[jj].index(minus_id)
+                                            t_1_frame = id_lane_xyxy_before[jj][idx]
+                                        else:
+                                            idx = id_lane_before[jj].index(-1*minus_id)
+                                            t_1_frame = id_lane_xyxy_before[jj][idx]
+                                        id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
+                                        #id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
+                                        forward_back_car[minus_id] = [forward_car, back_car]
+                                        # ガウシアンノイズを発生（平均，分散，データ長）
+                                        gauss_noise = np.random.normal(0, gauss_std, (particle_num, 1))
+                                        if car_flow==0:
+                                            lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dy + gauss_noise
+                                        else:
+                                            lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dx + gauss_noise
+                                        # ここで、失跡車両ごとに、パーティクルの最小値(min)と最大値(max)を求め、保存。マッチングで使う                                    
+                                        particle_range[jj][minus_id] = [np.min(lost_vehicle_particle[jj][minus_id]), np.max(lost_vehicle_particle[jj][minus_id])]
 
                         # 仮bboxを動かして，それが枠外だった場合，それは廃棄する
                         else:
@@ -775,18 +779,39 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                     # 前フレームにいなくて，今のフレームにいるid(新id)を探す
                     if new_id not in id_lane_before[jj]:
                         # print(id, ': 新id')
-                        # その新idのbbox補完が見つかったら，そのまま(マイナスのidがある，(例)新id:10, -10の補完がある)
+                        # "同じ車線内で"、その新idのbbox補完が見つかったら，そのまま(マイナスのidがある，(例)新id:10, -10の補完がある)
                         # この場合，例えば-10のパーティクルは削除する
                         flag=0
-                        for lane2 in id_lane:
-                            if -1*new_id in lane2:
-                                remove_minus_id.append(-1*new_id) # 本来ならすぐに消すべき
-                                for jjj, lane3 in enumerate(id_lane):
-                                    if -1*new_id in lane3:
-                                        break
-                                lost_vehicle_particle[jjj].pop(-1*new_id)
-                                flag=1
-                                break
+                        # これだと、別の車線までみてしまう
+                        # for jjj, lane2 in enumerate(id_lane_c):
+                        #     if -1*new_id in lane2:
+                        #         remove_minus_id.append(-1*new_id) # 本来ならすぐに消すべき
+                        #         # for jjj, lane3 in enumerate(id_lane):
+                        #         #     if -1*new_id in lane3:
+                        #         #         break
+                        #         if frame_idx>105900:
+                        #         #     print('frame_idx', frame_idx)
+                        #         #     print('jjj', jjj)
+                        #         #     print(new_id)
+                        #         #     print(id_lane)
+                        #         #     print(lost_vehicle_particle)
+                        #         #     print(lost_vehicle_particle_before)
+                        #             print('jj', jj)
+                        #             print('new_id', new_id)
+                        #         lost_vehicle_particle[jjj].pop(-1*new_id)  # 問題箇所
+                        #         flag=1
+                        #         break
+                        # for jjj, lane2 in enumerate(id_lane_c):
+                        if -1*new_id in lane:
+                            # if -1*new_id not in remove_minus_id:
+                            #     lost_vehicle_particle[jj].pop(-1*new_id)  # 問題箇所
+                            remove_minus_id.append(-1*new_id) # 本来ならすぐに消すべき
+                            # for jjj, lane3 in enumerate(id_lane):
+                            #     if -1*new_id in lane3:
+                            #         break
+                            # lost_vehicle_particle[jj].pop(-1*new_id)  # 問題箇所
+                            flag=1
+
                         if flag==1:
                             continue
 
@@ -855,9 +880,10 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                         if nearest_minus_idx>=0 and flag==0:
                             removed_id.append([-1*id_lane[jj][nearest_minus_idx], new_id])
                             id_lane[jj][new_ii] = -1*id_lane[jj][nearest_minus_idx]
+                            # if id_lane[jj][nearest_minus_idx] not in remove_minus_id:
+                            #     lost_vehicle_particle[jj].pop(id_lane[jj][nearest_minus_idx])
                             remove_minus_id.append(id_lane[jj][nearest_minus_idx])
                             prevented_switch_id.append(-1*id_lane[jj][nearest_minus_idx])
-                            lost_vehicle_particle[jj].pop(id_lane[jj][nearest_minus_idx])
 
 
             #print(prevented_switch_id)
@@ -1042,19 +1068,20 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                             # 入っていたらid_lane[ii]にマイナスidをappend
                             if in_out>=0:
                                 if in_out==jj:
-                                    id_lane[jj].append(-1*old_id)
-                                    id_trajectory_posi[jj].append([xx, yy])
-                                    # マイナスidのbboxを動かすため，t-1フレーム時のマイナスidのbbox座標を持ってくる  
-                                    idx = id_lane_before[jj].index(old_id)
-                                    t_1_frame = id_lane_xyxy_before[jj][idx]
-                                    id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
-                                    # id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
-                                    forward_back_car[-1*old_id] = [forward_car, back_car]
-                                    # パーティクルを生成
-                                    if car_flow==0:
-                                        lost_vehicle_particle[jj][-1*old_id] = np.full((particle_num, 1), yy)
-                                    else:
-                                        lost_vehicle_particle[jj][-1*old_id] = np.full((particle_num, 1), xx)
+                                    if -1*old_id not in id_lane[jj]:
+                                        id_lane[jj].append(-1*old_id)
+                                        id_trajectory_posi[jj].append([xx, yy])
+                                        # マイナスidのbboxを動かすため，t-1フレーム時のマイナスidのbbox座標を持ってくる  
+                                        idx = id_lane_before[jj].index(old_id)
+                                        t_1_frame = id_lane_xyxy_before[jj][idx]
+                                        id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
+                                        # id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
+                                        forward_back_car[-1*old_id] = [forward_car, back_car]
+                                        # パーティクルを生成
+                                        if car_flow==0:
+                                            lost_vehicle_particle[jj][-1*old_id] = np.full((particle_num, 1), yy)
+                                        else:
+                                            lost_vehicle_particle[jj][-1*old_id] = np.full((particle_num, 1), xx)
                                     
                                     
 
@@ -1070,8 +1097,8 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                         id_lane[jj].pop(idx)
                         id_lane_xyxy[jj].pop(idx)
                         id_trajectory_posi[jj].pop(idx)
-
-
+                        lost_vehicle_particle[jj].pop(del_id)
+            
             # 車線ごとに，idを先頭順に並べる
             #id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort2(id_lane, lane_head, id_lane_xyxy, id_trajectory_posi)
             id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort3(head_direction, id_lane, id_lane_xyxy, id_trajectory_posi)

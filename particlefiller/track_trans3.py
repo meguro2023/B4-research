@@ -232,7 +232,7 @@ with open(DETECTION_FILE_NAME, 'r') as file:
         conf_list = literal_eval(conf_list)
 
 
-        if frame_idx%10==0:
+        if frame_idx%1000==0:
             print(str(frame_idx) + 'フレーム目')
         # print(frame_idx)
         # 物体検出できた時，r.boxes.dataには「725 281 108 94 0 2 -1」このようなlistとなり，サイズが7になる

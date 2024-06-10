@@ -6,7 +6,7 @@ import os
 ### config #######################################################################################
 
 # # 車線を生成する場所
-count_place = '仲町二丁目_下り_big'
+count_place = '仲町二丁目_下り'
 #count_place = '仲町二丁目_下り_big'
 
 # ファイルの保存先（あらかじめ作っておく）
@@ -31,7 +31,9 @@ count_place = '仲町二丁目_下り_big'
 # BATH_PATH = '/home/meguro/mydatasets/track_particle/仲町二丁目/'
 # OUTPUT_PATH = BATH_PATH+count_place+'/'
 #OUTPUT_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/output_particle/'
-OUTPUT_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/test/'
+# OUTPUT_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/test/'
+# OUTPUT_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/particle_matching/'
+OUTPUT_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/constant_speed/'
 
 # track_memory.py用のpath
 # detection.txtの名前変更忘れずに
@@ -228,7 +230,8 @@ elif count_place=='MVI_40743_big':
 
 
 elif count_place=='南千住_big':
-    #DETECTION_FILE_NAME = '/Users/meguro/Documents/谷口研/カウント/カウント場所_cctv/南千住/detection_0_6.txt'
+    DETECTION_FILE_NAME = '/Users/meguro/Documents/谷口研/カウント/カウント場所_cctv/南千住/detection100_0_6.txt'
+    FRAME_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/frame/'
 
     # test用
     # テスト動画のパス
@@ -242,7 +245,7 @@ elif count_place=='南千住_big':
     # カウント結果の出力画像を何フレームに一回取るか
     output_image_space = 1
     # ファイル出力を行わない場合はFalse
-    output_do_or_not = True
+    output_do_or_not = False
     
     # track_huhu.py用
     # ここの4エリアはあらかじめ求めておく
@@ -287,6 +290,12 @@ elif count_place=='南千住_big':
     # マスクの場所を指定
     # masked_area = [[(0, 0), (1920, 400)],[(1683, 193), (222, 335)],[(950,373), (1101,521)],[(1240,396),(1616,617)]]
     masked_area = []
+    # パーティクルの数を設定
+    particle_num = 50
+    # ガウシアンノイズの分散
+    gauss_std = 50
+    # 鳥瞰画像上の縦、または横で、追跡中の車両同士が、この数より近かったら、それらは同じ車両だとみなす
+    overlapping_range_num = 100
 
     # track_huhu.py用
     # 車線
@@ -309,7 +318,8 @@ elif count_place=='南千住_big':
 
 
 elif count_place=='仲町二丁目_下り_big':
-    DETECTION_FILE_NAME = '/Users/meguro/Documents/谷口研/data/仲町二丁目/nakacho_jutai.txt'
+    #DETECTION_FILE_NAME = '/Users/meguro/Documents/谷口研/data/仲町二丁目/nakacho_jutai.txt'
+    DETECTION_FILE_NAME = '/Users/meguro/Documents/谷口研/カウント/カウント場所_cctv/仲町二丁目/detection500_0_6.txt'
     FRAME_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/frame/'
     # test用
     # テスト動画のパス
@@ -357,7 +367,7 @@ elif count_place=='仲町二丁目_下り_big':
     #lane_border = [800]
     lane_border = [300]
     # 新idは，この値の範囲内にマイナスidがある場合は，マイナスidが割り当てられる
-    matching_range = 300
+    matching_range = 800
     # 一度に移動する横の移動を何ピクセルまで許すか
     horizontal_limit_pixel = 1
     # 何フレーム分の記録を残し，それを使って移動予測をするか．10フレーム分保存しておく
@@ -373,6 +383,8 @@ elif count_place=='仲町二丁目_下り_big':
     gauss_std = 50
     # 鳥瞰画像上の縦、または横で、追跡中の車両同士が、この数より近かったら、それらは同じ車両だとみなす
     overlapping_range_num = 100
+    # 等速直線運動の際の速度
+    constant_speed = 25
 
 
     # track_huhu.py用
@@ -395,12 +407,14 @@ elif count_place=='仲町二丁目_下り_big':
 
 
 elif count_place=='仲町二丁目_下り':
+    DETECTION_FILE_NAME = '/Users/meguro/Documents/谷口研/カウント/カウント場所_cctv/仲町二丁目/detection100_0_6.txt'
+    FRAME_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/frame/'
     # test用
     # テスト動画のパス
     source = "/home/meguro/mydatasets/cctv2/実験用データ/実験用/仲町二丁目_1分.mov"
     #source = "/home/meguro/mydatasets/cctv2/実験用データ/仲町二丁目/仲町二丁目_1101-1201.mov"
     # テストの検出の際のconf(default=0.5)
-    conf = 0.7
+    conf = 0.6
     # カウント結果の出力画像を何フレームに一回取るか
     output_image_space = 1
     # ファイル出力を行わない場合はFalse
@@ -437,7 +451,7 @@ elif count_place=='仲町二丁目_下り':
     #lane_border = [800]
     lane_border = [300]
     # 新idは，この値の範囲内にマイナスidがある場合は，マイナスidが割り当てられる
-    matching_range = 800
+    matching_range = 300
     # 一度に移動する横の移動を何ピクセルまで許すか
     horizontal_limit_pixel = 1
     # 何フレーム分の記録を残し，それを使って移動予測をするか．10フレーム分保存しておく
@@ -447,6 +461,14 @@ elif count_place=='仲町二丁目_下り':
     # マスクの場所を指定
     # masked_area = [[(0, 0), (1920, 400)],[(1683, 193), (222, 335)],[(950,373), (1101,521)],[(1240,396),(1616,617)]]
     masked_area = [[(0, 0), (1920, 400)],[(1683, 193), (222, 335)],[(950,373), (1101,521)],[(1240,396),(1616,617)]]
+    # パーティクルの数を設定
+    particle_num = 50
+    # ガウシアンノイズの分散
+    gauss_std = 150
+    # 鳥瞰画像上の縦、または横で、追跡中の車両同士が、この数より近かったら、それらは同じ車両だとみなす
+    overlapping_range_num = 100
+    # 等速直線運動の際の速度
+    constant_speed = 20
 
 
     # track_huhu.py用
@@ -1065,3 +1087,84 @@ elif count_place=='MVI_63544':
     # 保存する場合は，まずファイルの中身を削除すること
     save_trajectory = True
     save_trajectory_path = 'to_huhu.txt'
+
+
+elif count_place=='山南_上り':
+    DETECTION_FILE_NAME = '/Users/meguro/Documents/谷口研/カウント/カウント場所_cctv/山南/detection100_0_6.txt'
+    FRAME_PATH = '/Users/meguro/Documents/谷口研/data/仲町二丁目/frame/'
+
+    # test用
+    # テスト動画のパス
+    #source = "/home/meguro/mydatasets/cctv2/実験用データ/実験用/仲町二丁目_1分.mov"
+    source = "/home/meguro/mydatasets/cctv2/実験用データ/仲町二丁目/仲町二丁目_1101-1201.mov"
+    # テストの検出の際のconf(default=0.5)
+    conf = 0.6
+    # カウント結果の出力画像を何フレームに一回取るか
+    output_image_space = 1
+    # ファイル出力を行わない場合はFalse
+    output_do_or_not = False
+    
+    # track_huhu.py用
+    # ここの4エリアはあらかじめ求めておく
+    # 平行化の処理に使う座標（検出画像の座標）
+    real_lane = np.array([(1436,365), (1542,381), (1028, 978), (637, 894)], dtype=np.float32)
+    # 平行化の処理に使う座標（鳥瞰画像の座標）
+    trans_lane = np.array([(0,0), (300,0), (300,3000), (0,3000)], dtype=np.float32)
+
+    # 鳥瞰画像における検出範囲
+    trans_lane_look = np.array([(0,0),(300,0),(300, 3000),(0,3000)], dtype=np.float32)
+    DETECTION_AREA = np.array([(1436,365), (1542,381), (1028, 978), (637, 894)], dtype=np.int32)
+
+
+    # 車線の数を指定
+    lane_num = 1
+    # track_trans2.pyで用いる，表示用のレーンの道幅の設定(1車線分の長さ)
+    lane_width = 800
+    # 車線を分ける（lane_borderを定める）ために，軸をつけたものを可視化するモード
+    # True: 軸を表示（ファイル出力をする），False: 軸を非表示（カウントするときはFalseにする）
+    axis_visualization='False'
+    # 軸をつけたグラフのファイル名
+    trans_img_path = 'trans_image.jpg'
+    # 射影変換後の車線は縦に流れるのか，横に流れるのか
+    # 0: 車は縦に流れる，1: 車は横に流れる
+    car_flow = 0
+    # 車線の先頭は上下左右のどれか「up down left right」
+    head_direction = 'up'
+    # 車線の中間の座標
+    # 縦に流れる2車線道路の場合，1車線目はx軸の0~500, 2車線目は500~1000のようなイメージ
+    #lane_border = [800]
+    lane_border = [300]
+    # 新idは，この値の範囲内にマイナスidがある場合は，マイナスidが割り当てられる
+    matching_range = 800
+    # 一度に移動する横の移動を何ピクセルまで許すか
+    horizontal_limit_pixel = 1
+    # 何フレーム分の記録を残し，それを使って移動予測をするか．10フレーム分保存しておく
+    save_frame_num = 10
+    # bboxのどこに軌跡を打つか: 'TOP_LEFT' 'TOP_RIGHT' 'BOTTOM_LEFT' 'BOTTOM_RIGHT' 'CENTER' 'BOTTOM_CENTER' 'BOTTOM_RIGHT'
+    trajectory_point = 'BOTTOM_LEFT'
+    # マスクの場所を指定
+    # masked_area = [[(0, 0), (1920, 400)],[(1683, 193), (222, 335)],[(950,373), (1101,521)],[(1240,396),(1616,617)]]
+    masked_area = []
+    # パーティクルの数を設定
+    particle_num = 50
+    # ガウシアンノイズの分散
+    gauss_std = 50
+    # 鳥瞰画像上の縦、または横で、追跡中の車両同士が、この数より近かったら、それらは同じ車両だとみなす
+    overlapping_range_num = 100
+
+    # track_huhu.py用
+    # 車線
+    lane_AREA = np.array([[(1357,340), (1500,367), (926, 950), (522, 851)]
+        ],
+        dtype=np.int32)
+    # 車線の先頭
+    lane_head = np.array([[1474, 305]],dtype=np.int32)
+
+    # track_free.py用
+    DETECTION_AREA_free = np.array([(1357,340), (1500,367), (926, 950), (522, 851)], dtype=np.int32)
+
+    # ua-detrac用
+    # 軌跡の情報を保存するかどうか
+    # 保存する場合は，まずファイルの中身を削除すること
+    save_trajectory = False
+
