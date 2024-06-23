@@ -4,6 +4,7 @@ import numpy as np
 #import torch
 import cv2
 #from PIL import Image
+import statistics
 import math
 import matplotlib.pyplot as plt
 
@@ -1498,6 +1499,57 @@ def find_the_nearest_minus_id2(id_trajectory_posi_before, id_lane_before, id_lan
     return nearest_minus_idx, flag, before_ii
 
 
+# 車線内の一番近いidを探してくる
+# その前に、前フレームで重なっているbboxがないか判定
+# 具体的には、鳥瞰画像上で、前フレームのあるidと、今フレームのあるidの正のidが近すぎたらそれらをマッチングする。
+# それ以降は負のidのみ見て、マッチング範囲内であるかどうかを判定する
+
+# returnはインデックス値
+# すでに一つの車線の状態の変数をもらっている
+# find_the_nearest_minus_id2のパーティクルの機能をなくしたversion
+def find_the_nearest_minus_id3(id_trajectory_posi_before, id_lane_before, id_lane, id_posi, new_ii, car_flow, matching_range, overlapping_range_num):
+    # flagが1の場合、前フレームの正idと今フレームの正idがマッチングできたことを示す
+    flag = 0
+    before_ii = 0
+    nearest_minus_idx = -1
+    # 前フレームの追跡中のidと、今フレームの追跡中のidが鳥瞰画像上で近すぎたらマッチング
+    for before_ii, before_posi in enumerate(id_trajectory_posi_before):
+        if car_flow==0:
+            if id_lane_before[before_ii]<0:
+                continue
+            else:
+                if abs(id_posi[new_ii][1] - before_posi[1]) < overlapping_range_num:
+                    flag = 1
+        else:
+            if id_lane_before[before_ii]<0:
+                continue
+            else:
+                if abs(id_posi[new_ii][0] - before_posi[0]) < overlapping_range_num:
+                    flag = 1    
+        if flag==1:
+            break
+        
+
+    if flag==0:
+        # [[ユークリッド距離, 0(index番号)],[ユークリッド距離, 1],...]
+        distance_index = []
+        for minus_idx, minus_id in enumerate(id_lane):
+            if minus_id<0:
+                #dist = np.linalg.norm(np.array(id_posi[new_ii]) - np.array(id_posi[minus_idx]))
+                if car_flow==0:
+                    dist = abs(id_posi[minus_idx][1]-id_posi[new_ii][1])
+                else:
+                    dist = abs(id_posi[minus_idx][0]-id_posi[new_ii][0])
+                distance_index.append([dist, minus_idx])
+        if len(distance_index)>0:
+            distance_index.sort()
+            #print(distance_index)
+            if distance_index[0][0]<matching_range:
+                nearest_minus_idx = distance_index[0][1]
+
+    return nearest_minus_idx, flag, before_ii
+
+
 
 # 補正画像を作成し，出力画像とマージする
 def merging_trans_image(frame_idx, img, id_lane, id_posi, prevented_switch_id, max_x, max_y, car_flow, lane_border, forward_back_car, head_direction, axis_visualization=False, trans_img_path='trans_img'):
@@ -2844,3 +2896,33 @@ def delete_overlapping_id(trans_pt, id_trajectory_posi, in_out, car_flow, overla
             return ii, flag
 
     return -1, flag
+
+
+# 車線ごとに、追跡が2フレーム連続で成功した車両の1フレームあたりの移動量をすべて取得し、その中央値を、その車線のconstant_speedにする
+def lane_constant_speed_calculation(id_lane, id_lane_before, id_trajectory_posi, id_trajectory_posi_before, lane_constant_speed, lane_num, car_flow):
+    success_id_speed = [[] for _ in range(lane_num)]
+    
+    for jj, lane in enumerate(id_lane):
+        for ii, id in enumerate(lane):
+            if id in id_lane_before[jj]: # 2フレーム連続でいたら
+                idx = id_lane_before[jj].index(id)
+                if car_flow==0:
+                    success_id_speed[jj].append(abs(id_trajectory_posi[jj][ii][1]-id_trajectory_posi_before[jj][idx][1]))
+                else:
+                    success_id_speed[jj].append(abs(id_trajectory_posi[jj][ii][0]-id_trajectory_posi_before[jj][idx][0]))
+    for jj in range(lane_num):
+        if len(success_id_speed[jj])>0:
+            lane_constant_speed[jj] = statistics.median_high(success_id_speed[jj])
+
+    return lane_constant_speed
+
+
+
+
+
+
+
+
+
+
+

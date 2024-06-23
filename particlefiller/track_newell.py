@@ -125,11 +125,11 @@ trans_lane_final = np.array([(0,0),(max_x,0),(max_x, max_y),(0, max_y)], dtype=n
 DETECTION_AREA = config.DETECTION_AREA
 output_do_or_not = config.output_do_or_not
 save_trajectory = config.save_trajectory
-particle_num = config.particle_num
 gauss_std = config.gauss_std
 overlapping_range_num = config.overlapping_range_num
-constant_speed = config.constant_speed
-
+lane_constant_speed = []
+for _ in range(lane_num):
+    lane_constant_speed.append(config.constant_speed)
 
 ### クラス名とクラス番号の紐付け
 #class_num_list = [2, 3, 7]
@@ -181,8 +181,6 @@ id_lane_xyxy_before_more = []
 id_trajectory_posi_before = []
 # 2フレーム前のid_trajectory_posiを保存しておく
 id_trajectory_posi_before_more = []
-# 1フレーム前のlost_vehicle_particleを保存
-lost_vehicle_particle_before = {}
 
 for _ in range(lane_num):
     id_lane_before.append([])
@@ -244,8 +242,8 @@ with open(DETECTION_FILE_NAME, 'r') as file:
         if frame_idx%1000==0:
             print(str(frame_idx) + 'フレーム目')
     
-        # if frame_idx<88000:
-        #     continue
+        if frame_idx<1000:
+            continue
 
         # print(frame_idx)
         # 物体検出できた時，r.boxes.dataには「725 281 108 94 0 2 -1」このようなlistとなり，サイズが7になる
@@ -270,21 +268,12 @@ with open(DETECTION_FILE_NAME, 'r') as file:
         # 同時に，現フレームでの各idのbboxの基準点の座標を保存しておく（先頭順にsortするため）
         # こっちにはパーティクルの中心の値を格納する
         id_trajectory_posi = []
-        # 失跡車両が発生したら，決められた数のパーティクルをまく
-        # {マイナスid: np.array(2, パーティクルの数)}
-        lost_vehicle_particle = []
-        # 失跡車両のパーティクルの範囲
-        # 前フレームの失跡車両を今フレームに更新した失跡車両のパーティクルの情報(min,max)のみを保存すれば良い
-        # 前フレームにいた車両が1フレームでid_switchしたときの対策は、find_the_nearest_minus_id2でやった
-        # 今フレームで同じ車両に複数idついた場合の対策はdelete_overlapping_idでやった
-        particle_range = [] # [{1: [10. 30]}, {}]みたいな
+
 
         for _ in range(lane_num):
             id_lane.append([])
             id_lane_xyxy.append([])
             id_trajectory_posi.append([])
-            lost_vehicle_particle.append({})
-            particle_range.append({})
 
         # 移動予測した時に参考にした前後の車を保存
         # {マイナスid:[参考にした前の車のid(無ければNone), 参考にした後ろの車のid(無ければNone)]},...]
@@ -534,6 +523,18 @@ with open(DETECTION_FILE_NAME, 'r') as file:
             # 車線ごとに，idを先頭順に並べる
             id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort3(head_direction, id_lane, id_lane_xyxy, id_trajectory_posi)
 
+            # constant_speedを車線ごとに計算
+            lane_constant_speed = my_function.lane_constant_speed_calculation(id_lane, id_lane_before, id_trajectory_posi, id_trajectory_posi_before, lane_constant_speed, lane_num, car_flow)
+
+            # a = [[],[]]
+            # for jj, lane in enumerate(id_trajectory_posi):
+            #     for ii, id3 in enumerate(lane):
+            #         if ii+1<len(lane):
+            #             a[jj].append(abs(id_trajectory_posi[jj][ii][1]-id_trajectory_posi[jj][ii+1][1]))
+            # if frame_idx%10==0:
+            #     print(str(frame_idx) + 'フレーム')
+            #     print(lane_constant_speed)
+            #     print(a)
 
             ###################################################################################
             # 大型アップデート
@@ -616,8 +617,8 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                             # # dy = t_1[1] - t_2[1]
                             # dx = round((t_1[0] - t_2[0])/f)
                             # dy = round((t_1[1] - t_2[1])/f)
-                            dx = constant_speed
-                            dy = constant_speed
+                            dx = lane_constant_speed[jj]
+                            dy = lane_constant_speed[jj]
                             # 横移動は考慮しないようにする
                             if car_flow==0:
                                 dx=0
@@ -735,15 +736,7 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                                         id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
                                         #id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
                                         forward_back_car[minus_id] = [forward_car, back_car]
-                                        # ガウシアンノイズを発生（平均，分散，データ長）
-                                        gauss_noise = np.random.normal(0, gauss_std, (particle_num, 1))
-                                        if car_flow==0:
-                                            lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dy + gauss_noise
-                                        else:
-                                            lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dx + gauss_noise
-                                        # ここで、失跡車両ごとに、パーティクルの最小値(min)と最大値(max)を求め、保存。マッチングで使う                                    
-                                        particle_range[jj][minus_id] = [np.min(lost_vehicle_particle[jj][minus_id]), np.max(lost_vehicle_particle[jj][minus_id])]
-
+                                        
                         # 仮bboxを動かして，それが枠外だった場合，それは廃棄する
                         else:
                             remove_minus_id.append(minus_id)
@@ -863,7 +856,8 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                         # flag=1なら前フレームのある追跡中のidが、1フレームでid_switchしたと判断し、付け替える
                         # flag=0で、nearest_minus_idxが0以上なら、そのindexのマイナスidとnew_idをマッチングする
                         # ここが失跡車両マッチング
-                        nearest_minus_idx, flag, before_ii = my_function.find_the_nearest_minus_id2(id_trajectory_posi_before[jj], id_lane_before[jj], id_lane[jj], id_trajectory_posi[jj], new_ii, car_flow, matching_range, overlapping_range_num, particle_range[jj])
+
+                        nearest_minus_idx, flag, before_ii = my_function.find_the_nearest_minus_id3(id_trajectory_posi_before[jj], id_lane_before[jj], id_lane[jj], id_trajectory_posi[jj], new_ii, car_flow, matching_range, overlapping_range_num)
 
                         if flag==1:
                             if id_lane_before[jj][before_ii] in id_lane[jj]:
@@ -1097,12 +1091,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                                         id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
                                         # id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
                                         forward_back_car[-1*old_id] = [forward_car, back_car]
-                                        # パーティクルを生成
-                                        if car_flow==0:
-                                            lost_vehicle_particle[jj][-1*old_id] = np.full((particle_num, 1), yy)
-                                        else:
-                                            lost_vehicle_particle[jj][-1*old_id] = np.full((particle_num, 1), xx)
-                                    
                                     
 
                         # エリア外，または，別の車線に入ってしまった場合は，そのbbox補完は諦める（車線の中心を定めてそれを沿うようにすれば回避できる）
@@ -1117,8 +1105,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                         id_lane[jj].pop(idx)
                         id_lane_xyxy[jj].pop(idx)
                         id_trajectory_posi[jj].pop(idx)
-                        if del_id in lost_vehicle_particle[jj]:
-                            lost_vehicle_particle[jj].pop(del_id)
             
             # 車線ごとに，idを先頭順に並べる
             #id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort2(id_lane, lane_head, id_lane_xyxy, id_trajectory_posi)
@@ -1133,12 +1119,10 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 id_lane_xyxy_before_more = id_lane_xyxy.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
                 id_trajectory_posi_before_more = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
             elif detection_bigin_frame==2:
                 id_lane_before = id_lane.copy()
                 id_lane_xyxy_before = id_lane_xyxy.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
             else:
                 id_lane_before_more = id_lane_before.copy()
                 id_lane_before = id_lane.copy()
@@ -1146,7 +1130,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 id_lane_xyxy_before = id_lane_xyxy.copy()
                 id_trajectory_posi_before_more = id_trajectory_posi_before.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
 
 
             id_lane_before_more_10.insert(0, id_lane)
@@ -1257,7 +1240,8 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 # print(id_lane)
                 # print(id_trajectory_posi)
                 # 補正画像の作成し，出力画像とマージ
-                img = my_function.merging_trans_image7(img, id_lane, id_trajectory_posi, prevented_switch_id, max_x, max_y, car_flow, lane_border, lost_vehicle_particle)
+                #img = my_function.merging_trans_image7(img, id_lane, id_trajectory_posi, prevented_switch_id, max_x, max_y, car_flow, lane_border, lost_vehicle_particle)
+                img = my_function.merging_trans_image5(frame_idx, img, id_lane, id_trajectory_posi, prevented_switch_id, max_x, max_y, car_flow, lane_border, forward_back_car, head_direction, trans_lane, trans_lane_look)
                 
                 # これまでの結果を反映した画像を保存
                 if frame_idx%output_image_space==0:
@@ -1718,12 +1702,10 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 id_lane_xyxy_before_more = id_lane_xyxy.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
                 id_trajectory_posi_before_more = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
             elif detection_bigin_frame==2:
                 id_lane_before = id_lane.copy()
                 id_lane_xyxy_before = id_lane_xyxy.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
             else:
                 id_lane_before_more = id_lane_before.copy()
                 id_lane_before = id_lane.copy()
@@ -1731,7 +1713,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 id_lane_xyxy_before = id_lane_xyxy.copy()
                 id_trajectory_posi_before_more = id_trajectory_posi_before.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
 
             id_lane_before_more_10.insert(0, id_lane)
             id_lane_xyxy_before_more_10.insert(0, id_lane_xyxy)

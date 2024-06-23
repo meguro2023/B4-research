@@ -125,9 +125,6 @@ trans_lane_final = np.array([(0,0),(max_x,0),(max_x, max_y),(0, max_y)], dtype=n
 DETECTION_AREA = config.DETECTION_AREA
 output_do_or_not = config.output_do_or_not
 save_trajectory = config.save_trajectory
-particle_num = config.particle_num
-gauss_std = config.gauss_std
-overlapping_range_num = config.overlapping_range_num
 constant_speed = config.constant_speed
 
 
@@ -163,8 +160,6 @@ inverse_M = np.linalg.inv(M)
 total_id=[]
 vehicle_type=[]
 removed_id = [] # 廃棄したidはここに入れておく
-removed_id_back = []
-all_remove_id = []
 # histry_id=[]
 # histry_bbox_center=[]
 histry_bbox_trajectory_point=[]
@@ -181,9 +176,6 @@ id_lane_xyxy_before_more = []
 id_trajectory_posi_before = []
 # 2フレーム前のid_trajectory_posiを保存しておく
 id_trajectory_posi_before_more = []
-# 1フレーム前のlost_vehicle_particleを保存
-lost_vehicle_particle_before = {}
-
 for _ in range(lane_num):
     id_lane_before.append([])
     id_lane_before_more.append([])
@@ -243,10 +235,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
 
         if frame_idx%1000==0:
             print(str(frame_idx) + 'フレーム目')
-    
-        # if frame_idx<88000:
-        #     continue
-
         # print(frame_idx)
         # 物体検出できた時，r.boxes.dataには「725 281 108 94 0 2 -1」このようなlistとなり，サイズが7になる
         # このうち，2はクラスを指しており，現在クラス2はcarである．
@@ -268,23 +256,11 @@ with open(DETECTION_FILE_NAME, 'r') as file:
         # 同時に，そのidのbbox_frame(左上，右下)の情報を保存
         id_lane_xyxy = []
         # 同時に，現フレームでの各idのbboxの基準点の座標を保存しておく（先頭順にsortするため）
-        # こっちにはパーティクルの中心の値を格納する
         id_trajectory_posi = []
-        # 失跡車両が発生したら，決められた数のパーティクルをまく
-        # {マイナスid: np.array(2, パーティクルの数)}
-        lost_vehicle_particle = []
-        # 失跡車両のパーティクルの範囲
-        # 前フレームの失跡車両を今フレームに更新した失跡車両のパーティクルの情報(min,max)のみを保存すれば良い
-        # 前フレームにいた車両が1フレームでid_switchしたときの対策は、find_the_nearest_minus_id2でやった
-        # 今フレームで同じ車両に複数idついた場合の対策はdelete_overlapping_idでやった
-        particle_range = [] # [{1: [10. 30]}, {}]みたいな
-
         for _ in range(lane_num):
             id_lane.append([])
             id_lane_xyxy.append([])
             id_trajectory_posi.append([])
-            lost_vehicle_particle.append({})
-            particle_range.append({})
 
         # 移動予測した時に参考にした前後の車を保存
         # {マイナスid:[参考にした前の車のid(無ければNone), 参考にした後ろの車のid(無ければNone)]},...]
@@ -307,8 +283,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
             conf_list = np.array(conf_list)
             # print(conf_list)
 
-
-
             # 推論結果の出力
             # im_array = r.plot()  # plot a BGR numpy array of predictions
             # img = Image.fromarray(im_array[..., ::-1])  # RGB PIL image
@@ -327,8 +301,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
 
                 #img = my_function.detection_area_draw4(img, np.array([(20, 277), (303, 169), (766, 249), (430, 540)], dtype=np.float32))
 
-            # ここで、id_numをソートし、それに伴い、他の配列もソートする
-            id_num, class_num, bbox_center, bbox_frame, conf_list, removed_id, removed_id_back, all_remove_id = my_function.sorting_tracking_data(id_num, class_num, bbox_center, bbox_frame, conf_list, removed_id)
 
             # 検出されたIDの数だけ回す
             for i, id in enumerate(id_num):
@@ -349,34 +321,29 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 # もし，過去に対応付けidを扱う場合は，対応付けしたidの中で一番小さいidとして扱う
                 # id対応付けの対象は，同じ車体にほぼ同じbboxを付けた場合
                 # まずは，removed_id=[[7, 9], [10, 7]]のような状態を[[7, 9, 10]]のようにする
-                if removed_id!=removed_id_back:
-                    result_dict = {}
-                    for sublist in removed_id:
-                        sublist.sort()
-                        key = sublist[0]
-                        if key in result_dict:
-                            result_dict[key].extend(sublist[1:])
-                        else:
-                            result_dict[key] = sublist
-                    removed_id = list(result_dict.values())
-                    removed_id_back = removed_id.copy()
-                    all_remove_id = [item for sublist in removed_id for item in sublist]
-
+                result_dict = {}
+                for sublist in removed_id:
+                    sublist.sort()
+                    key = sublist[0]
+                    if key in result_dict:
+                        result_dict[key].extend(sublist[1:])
+                    else:
+                        result_dict[key] = sublist
+                removed_id = list(result_dict.values())
                 # 次に今見ているidが対応付けしたidなのかどうかを確かめ，removed_idに入っていた場合は，そのidは対応付けで一番小さいidとして扱う
-                if int(id[0]) in all_remove_id:
-                    for sublist in removed_id:
-                        if int(id[0]) in sublist:
-                            out = sublist[0]
-                            id[0] = out
-                            break
-                    # もし，今見ているidがすでに車線内にいるならパス
-                    frag=0
-                    for lanes in id_lane:
-                        if int(id[0]) in lanes:
-                            frag=1
-                            break
-                    if frag==1:
-                        continue
+                for sublist in removed_id:
+                    if int(id[0]) in sublist:
+                        out = sublist[0]
+                        id[0] = out
+                        break
+                # もし，今見ているidがすでに車線内にいるならパス
+                frag=0
+                for lanes in id_lane:
+                    if int(id[0]) in lanes:
+                        frag=1
+                        break
+                if frag==1:
+                    continue
 
                 # bbox_center_x = bbox_center[i][0]
                 # bbox_center_y = bbox_center[i][1]
@@ -449,41 +416,26 @@ with open(DETECTION_FILE_NAME, 'r') as file:
 
                 # bboxの基準点がエリア内ならbboxを描画
                 if in_out>=0:
+                    id_trajectory_posi[in_out].append([trans_pt[0], trans_pt[1]])
 
-                    # # 同じ車両に2つのbboxを重ねてしまうことがあるので，iouを計算し，重なりすぎていた場合，その二つのidを対応付ける(表示するのは小さい方のid)
-                    # # 変数xyxy: すでに車線に属している，かつ，独立していると判断されたidのbboxのxyxy, xyxy=[[左上x],[左上y],[右下x],[右下y]]
-                    # # 変数bbox_frame[i]: 現在注目しているidのbboxのxyxy(小数), bbox_frame[i]=[[左上x],[左上y],[右下x],[右下y]]
-                    # c = id_lane_xyxy.copy()
-                    # # これまでid_laneに保存してきたidを対象に、
-                    # flag = 0
-                    # for t, xyxy in enumerate(c[in_out]):
-                    #     iou_num = my_function.calculation_iou(xyxy, bbox_frame[i])
-                    #     # すでに車線上にあるidのbboxとほぼピッタリ重なってしまった場合には一方のidと対応付ける
-                    #     if iou_num>IOU_LIMIT:
-                    #         frag=0
-                    #         for ii in removed_id:
-                    #             if ii[0]==int(id[0]):
-                    #                 frag=1
-                    #                 break
-                    #         if frag==1:
-                    #             continue
-                    #         removed_id.append([id_lane[in_out][t], int(id[0])])
-                    #         flag = 1
-                    #         print(str(frame_idx) + 'フレーム目')
-                    #         print('removed_id:', id_lane[in_out][t], int(id[0]))
-
-
-                    # 今フレームで重なったbboxがないかを鳥瞰画像から調べる
-                    t, flag = my_function.delete_overlapping_id(trans_pt, id_trajectory_posi, in_out, car_flow, overlapping_range_num)
-
-                    if flag==1:
-                        removed_id.append([id_lane[in_out][t], int(id[0])])
-                        # print(str(frame_idx) + 'フレーム目')
-                        # print('removed_id:', id_lane[in_out][t], int(id[0]))
-                        continue
-
-                    # 鳥瞰画像上の位置
-                    id_trajectory_posi[in_out].append([trans_pt[0], trans_pt[1]])    
+                    # 同じ車両に2つのbboxを重ねてしまうことがあるので，iouを計算し，重なりすぎていた場合，その二つのidを対応付ける(表示するのは小さい方のid)
+                    # 変数xyxy: すでに車線に属している，かつ，独立していると判断されたidのbboxのxyxy, xyxy=[[左上x],[左上y],[右下x],[右下y]]
+                    # 変数bbox_frame[i]: 現在注目しているidのbboxのxyxy(小数), bbox_frame[i]=[[左上x],[左上y],[右下x],[右下y]]
+                    c = id_lane_xyxy.copy()
+                    for t, xyxy in enumerate(c[in_out]):
+                        iou_num = my_function.calculation_iou(xyxy, bbox_frame[i])
+                        # すでに車線上にあるidのbboxとほぼピッタリ重なってしまった場合には一方のidと対応付ける
+                        if iou_num>IOU_LIMIT:
+                            frag=0
+                            for ii in removed_id:
+                                if ii[0]==int(id[0]):
+                                    frag=1
+                                    break
+                            if frag==1:
+                                continue
+                            removed_id.append([id_lane[in_out][t], int(id[0])])
+                            #print('removed_id:', removed_id)
+                            continue
                     # IOUの試練を突破したidの左上と右下の位置を保存
                     id_lane_xyxy[in_out].append(bbox_frame[i])
                     # どの車線に属しているのかを記録
@@ -633,373 +585,7 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                                     dx = -1*abs(dx)
                             xx = id_trajectory_posi_before[jj][ii][0]+dx
                             yy = id_trajectory_posi_before[jj][ii][1]+dy
-                        # 前の車のみ見つかった場合は，前の車の移動量のみを参考にしてマイナスidを動かす
-                        elif back_car == None:
-                            # t-1フレーム時の前の車の基準点の座標を持ってくる
-                            idx = id_lane_before[jj].index(forward_car)
-                            t_1 = id_trajectory_posi_before[jj][idx]
-                            t_1_frame = id_lane_xyxy_before[jj][idx]
-                            # 今のフレームの前の車の基準点の座標を持ってくる
-                            idx = id_lane[jj].index(forward_car)
-                            t = id_trajectory_posi[jj][idx]
-                            t_frame = id_lane_xyxy[jj][idx]
-                            # 移動量を計算
-                            dx = t[0] - t_1[0]
-                            dy = t[1] - t_1[1]
-                            # 横移動は考慮しないようにする
-                            if car_flow==0:
-                                dx=0
-                            else:
-                                dy=0
-                            xx = id_trajectory_posi_before[jj][ii][0]+dx
-                            yy = id_trajectory_posi_before[jj][ii][1]+dy
-                        # 後ろの車のみ見つかった場合は，後ろの車の移動量のみを参考にしてマイナスidを動かす
-                        elif forward_car == None:
-                            # t-1フレーム時の前の車の基準点の座標を持ってくる
-                            idx = id_lane_before[jj].index(back_car)
-                            t_1 = id_trajectory_posi_before[jj][idx]
-                            t_1_frame = id_lane_xyxy_before[jj][idx]
-                            # 今のフレームの前の車の基準点の座標を持ってくる
-                            idx = id_lane[jj].index(back_car)
-                            t = id_trajectory_posi[jj][idx]
-                            t_frame = id_lane_xyxy[jj][idx]
-                            # 移動量を計算
-                            dx = t[0] - t_1[0]
-                            dy = t[1] - t_1[1]
-                            # 横移動は考慮しないようにする
-                            if car_flow==0:
-                                dx=0
-                            else:
-                                dy=0
-                            xx = id_trajectory_posi_before[jj][ii][0]+dx
-                            yy = id_trajectory_posi_before[jj][ii][1]+dy
-                        # 前と後ろ両方の車が見つかった場合は，前と後ろの移動量の平均を基にして動かす
-                        else:
-                            # 前の車
-                            # t-1フレーム時の前の車の基準点の座標を持ってくる
-                            idx = id_lane_before[jj].index(forward_car)
-                            t_1 = id_trajectory_posi_before[jj][idx]
-                            t_1_frame = id_lane_xyxy_before[jj][idx]
-                            # 今のフレームの前の車の基準点の座標を持ってくる
-                            idx = id_lane[jj].index(forward_car)
-                            t = id_trajectory_posi[jj][idx]
-                            t_frame = id_lane_xyxy[jj][idx]
-                            # 移動量を計算
-                            dx_f = t[0] - t_1[0]
-                            dy_f = t[1] - t_1[1]
-                            # 横移動は考慮しないようにする
-                            if car_flow==0:
-                                dx_f=0
-                            else:
-                                dy_f=0
-                            # 後ろの車
-                            # t-1フレーム時の前の車の基準点の座標を持ってくる
-                            idx = id_lane_before[jj].index(back_car)
-                            t_1 = id_trajectory_posi_before[jj][idx]
-                            t_1_frame = id_lane_xyxy_before[jj][idx]
-                            # 今のフレームの前の車の基準点の座標を持ってくる
-                            idx = id_lane[jj].index(back_car)
-                            t = id_trajectory_posi[jj][idx]
-                            t_frame = id_lane_xyxy[jj][idx]
-                            # 移動量を計算
-                            dx_b = t[0] - t_1[0]
-                            dy_b = t[1] - t_1[1]
-                            # 横移動は考慮しないようにする
-                            if car_flow==0:
-                                dx_b=0
-                            else:
-                                dy_b=0
-                            dx = (dx_f+dx_b)/2
-                            dy = (dy_f+dy_b)/2
-                            xx = id_trajectory_posi_before[jj][ii][0]+(dx)
-                            yy = id_trajectory_posi_before[jj][ii][1]+(dy)
 
-                        # 現在は，エリア外に行ったマイナスidは無視する
-                        if 0<=xx and xx<=max_x and 0<=yy and yy<=max_y:
-                            # [xx, yy]が同じ車線内に入っているかを判定
-                            #in_out = my_function.object_in_the_area2(lane_AREA, xx, yy)
-                            in_out = my_function.trans_lane_judgment((xx, yy), lane_border, car_flow)
-                            # 入っていたらid_lane[ii]にマイナスidをappend
-                            if in_out>=0:
-                                if in_out==jj:
-                                    if minus_id not in id_lane[jj]:
-                                        id_lane[jj].append(minus_id)
-                                        id_trajectory_posi[jj].append([xx, yy])
-                                        # マイナスidのbboxを動かすため，t-1フレーム時のマイナスidのbbox座標を持ってくる
-                                        if minus_id in id_lane_before[jj]:    
-                                            idx = id_lane_before[jj].index(minus_id)
-                                            t_1_frame = id_lane_xyxy_before[jj][idx]
-                                        else:
-                                            idx = id_lane_before[jj].index(-1*minus_id)
-                                            t_1_frame = id_lane_xyxy_before[jj][idx]
-                                        id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
-                                        #id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
-                                        forward_back_car[minus_id] = [forward_car, back_car]
-                                        # ガウシアンノイズを発生（平均，分散，データ長）
-                                        gauss_noise = np.random.normal(0, gauss_std, (particle_num, 1))
-                                        if car_flow==0:
-                                            lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dy + gauss_noise
-                                        else:
-                                            lost_vehicle_particle[jj][minus_id] = lost_vehicle_particle_before[jj][minus_id] + dx + gauss_noise
-                                        # ここで、失跡車両ごとに、パーティクルの最小値(min)と最大値(max)を求め、保存。マッチングで使う                                    
-                                        particle_range[jj][minus_id] = [np.min(lost_vehicle_particle[jj][minus_id]), np.max(lost_vehicle_particle[jj][minus_id])]
-
-                        # 仮bboxを動かして，それが枠外だった場合，それは廃棄する
-                        else:
-                            remove_minus_id.append(minus_id)
-                        
-                        # エリア外，または，別の車線に入ってしまった場合は，そのbbox補完は諦める（車線の中心を定めてそれを沿うようにすれば回避できる）
-
-            # remove_minus_idのidを廃棄する（マッチング成功したマイナスid,お役御免）
-            id_lane_c = id_lane.copy()
-            for del_id in remove_minus_id:
-                for jj, lane in enumerate(id_lane_c):
-                    if del_id in lane:
-                        idx = id_lane[jj].index(del_id)
-                        id_lane[jj].pop(idx)
-                        id_lane_xyxy[jj].pop(idx)
-                        id_trajectory_posi[jj].pop(idx)
-
-
-            # 車線ごとに，idを先頭順に並べる
-            #id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort2(id_lane, lane_head, id_lane_xyxy, id_trajectory_posi)
-            id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort3(head_direction, id_lane, id_lane_xyxy, id_trajectory_posi)
-
-
-            # 前フレームにいなくて，今のフレームにいるid(新id)を探す
-            # まずは，その新idが突如id_switchしただけの可能性があるので，前フレームの同じ車線内の情報をみて，あまりにも重なっているようなら，id同士を対応付ける
-            # 前の処理(iou>0.9)でやったのは，同じ車体に二つのbboxが重なった時の対応
-            # 新idを見つけたら，id_lane内のbbox補完とマッチングし，id_switchを防ぐ
-            id_lane_c = id_lane.copy()
-            remove_minus_id = [] # id_lane内のマイナスidと新規idがマッチングできたら，そのマイナスidは廃棄する
-            for jj, lane in enumerate(id_lane_c):
-                for new_ii, new_id in enumerate(lane):
-                    if new_id<0:
-                        continue
-                    # 前フレームにいなくて，今のフレームにいるid(新id)を探す
-                    if new_id not in id_lane_before[jj]:
-                        # print(id, ': 新id')
-                        # "同じ車線内で"、その新idのbbox補完が見つかったら，そのまま(マイナスのidがある，(例)新id:10, -10の補完がある)
-                        # この場合，例えば-10のパーティクルは削除する
-                        flag=0
-                        # これだと、別の車線までみてしまう
-                        # for jjj, lane2 in enumerate(id_lane_c):
-                        #     if -1*new_id in lane2:
-                        #         remove_minus_id.append(-1*new_id) # 本来ならすぐに消すべき
-                        #         # for jjj, lane3 in enumerate(id_lane):
-                        #         #     if -1*new_id in lane3:
-                        #         #         break
-                        #         if frame_idx>105900:
-                        #         #     print('frame_idx', frame_idx)
-                        #         #     print('jjj', jjj)
-                        #         #     print(new_id)
-                        #         #     print(id_lane)
-                        #         #     print(lost_vehicle_particle)
-                        #         #     print(lost_vehicle_particle_before)
-                        #             print('jj', jj)
-                        #             print('new_id', new_id)
-                        #         lost_vehicle_particle[jjj].pop(-1*new_id)  # 問題箇所
-                        #         flag=1
-                        #         break
-                        # for jjj, lane2 in enumerate(id_lane_c):
-                        if -1*new_id in lane:
-                            # if -1*new_id not in remove_minus_id:
-                            #     lost_vehicle_particle[jj].pop(-1*new_id)  # 問題箇所
-                            remove_minus_id.append(-1*new_id) # 本来ならすぐに消すべき
-                            # for jjj, lane3 in enumerate(id_lane):
-                            #     if -1*new_id in lane3:
-                            #         break
-                            # lost_vehicle_particle[jj].pop(-1*new_id)  # 問題箇所
-                            flag=1
-
-                        if flag==1:
-                            continue
-
-                        # # 前フレームの同じ車線内の情報をみて，新idのbboxと前フレームのbboxがあまりにも重なっているようなら，id同士を対応付ける
-                        # frag=0
-                        # # ここの部分は改良
-                        # for before_ii, before_bbox in enumerate(id_lane_xyxy_before[jj]):
-                        #     if id_lane_before[jj][before_ii]<0:
-                        #         continue
-                        #     iou_num = my_function.calculation_iou(id_lane_xyxy[jj][new_ii], before_bbox)
-                        #     if iou_num>IOU_LIMIT:
-                        #         removed_id.append([id_lane_before[jj][before_ii], new_id])
-                        #         # 新idをid_lane_before[jj][before_ii]に切り替えたいが，すでにそのidが今のフレームにいるなら新idに関わるbboxの情報などは廃棄する．
-                        #         if id_lane_before[jj][before_ii] in id_lane[jj]:
-                        #             # id_lane[jj].pop(new_ii)
-                        #             # id_lane_xyxy[jj].pop(new_ii)
-                        #             # id_trajectory_posi[jj].pop(new_ii)
-                        #             remove_minus_id.append(new_id)
-                        #             # id_lane[jj][new_ii] = id_lane_before[jj][before_ii]
-                        #         else:
-                        #             id_lane[jj][new_ii] = id_lane_before[jj][before_ii]
-                        #         print(id_lane[jj][new_ii], id_lane_before[jj][before_ii])
-                        #         frag=1
-                        #         break
-                        #################
-
-                        # if frag==0:
-                            # 新規idとbbox補完のiouを測って，成功した場合はマッチングしてidの対応付けをする
-                            # 本当は，一番iouが高いマイナスidを新idに割り当てたいが，時間がないのでとりあえず片っ端からやっていく
-                            # for minus_ii, minus_id in enumerate(lane):
-                            #     if minus_id<0:
-                            #         iou_num = my_function.calculation_iou(id_lane_xyxy[jj][new_ii], id_lane_xyxy[jj][minus_ii])
-                            #         if iou_num>NEW_IOU_LIMIT:
-                            #             removed_id.append([-1*minus_id, new_id])
-                            #             id_lane[jj][new_ii] = -1*minus_id
-                            #             remove_minus_id.append(minus_id)
-                            #             break
-
-                            # 補正画像を見て，新idの指定した範囲内にマイナスidがいた場合は，付け替える
-                            # 縦に車が流れている道路であれば，y座標の値に注目して，車線内の一番近くマイナスidがmatching_range内であれば，付け替える作業を行う
-                            # new_iiの前後のインデックスを見るだけでも良さそうだが，とりあえず車線内のマイナスidをすべて調べて一番近いマイナスidを探す
-                            # 出力:条件を満たした候補のマイナスidのインデックス，見つからなかった場合は-1を出力
-                            #print('ok')
-                            # nearest_minus_idx = my_function.find_the_nearest_minus_id(id_lane[jj], id_trajectory_posi[jj], new_ii, car_flow, matching_range)
-                            # 返り値が-1なら失跡車両マッチング失敗
-                            # パーティクルフィルタでマッチングできるか試してみる
-                            # if nearest_minus_idx==-1:
-
-                        # flag=1なら前フレームのある追跡中のidが、1フレームでid_switchしたと判断し、付け替える
-                        # flag=0で、nearest_minus_idxが0以上なら、そのindexのマイナスidとnew_idをマッチングする
-                        # ここが失跡車両マッチング
-                        nearest_minus_idx, flag, before_ii = my_function.find_the_nearest_minus_id2(id_trajectory_posi_before[jj], id_lane_before[jj], id_lane[jj], id_trajectory_posi[jj], new_ii, car_flow, matching_range, overlapping_range_num, particle_range[jj])
-
-                        if flag==1:
-                            if id_lane_before[jj][before_ii] in id_lane[jj]:
-                                # id_lane[jj].pop(new_ii)
-                                # id_lane_xyxy[jj].pop(new_ii)
-                                # id_trajectory_posi[jj].pop(new_ii)
-                                remove_minus_id.append(new_id)
-                                # id_lane[jj][new_ii] = id_lane_before[jj][before_ii]
-                            else:
-                                removed_id.append([id_lane_before[jj][before_ii], id_lane[jj][new_ii]]) # 追加、これ必要じゃないか？
-                                id_lane[jj][new_ii] = id_lane_before[jj][before_ii]
-                            # print(id_lane[jj][new_ii], id_lane_before[jj][before_ii])
-                        
-                        if nearest_minus_idx>=0 and flag==0:
-                            removed_id.append([-1*id_lane[jj][nearest_minus_idx], new_id])
-                            id_lane[jj][new_ii] = -1*id_lane[jj][nearest_minus_idx]
-                            # if id_lane[jj][nearest_minus_idx] not in remove_minus_id:
-                            #     lost_vehicle_particle[jj].pop(id_lane[jj][nearest_minus_idx])
-                            remove_minus_id.append(id_lane[jj][nearest_minus_idx])
-                            prevented_switch_id.append(-1*id_lane[jj][nearest_minus_idx])
-
-
-            #print(prevented_switch_id)
-
-
-            # 前フレームにあって，今のフレームにいないidを探す(つまり追跡が途切れたid)
-            # そのidは仮bboxをid_laneのフレームに配置する
-            # 仮bboxの位置は，前と後ろの車の情報を用いて保管する
-            # ただし，前と後ろの車が両方見つからない，かつ，そのidが，t-1フレームにいたが，t-2フレームにはいない場合(つまり1フレームにだけ登場した場合)は仕方がないので無視する
-            # 修正
-            # 今までは，今フレームと前フレームの同じ車線しか見ていなかったが，車線全体を見る
-            # じゃないと車が車線変更した時に元いた車線に位置予測の赤いbboxが残ってしまう
-            for jj, lane in enumerate(id_lane_before):
-                for ii, old_id in enumerate(lane):
-                    if old_id<0:
-                        continue
-                    # 追跡が途切れたidを発見
-                    frag=0
-                    for k in id_lane:
-                        if old_id in k:
-                            frag=1
-                    if frag==0:
-                    #if old_id not in id_lane[jj]:
-                        # そのマイナスidの前方の車を発見
-                        k = ii-1
-                        while k>=0:
-                            if lane[k]>0 and (lane[k] in id_lane[jj]):
-                                forward_car = lane[k]
-                                break
-                            k-=1
-                        if k==-1:
-                            forward_car = None
-                        # そのマイナスidの後方の車を発見
-                        k = ii+1
-                        while k<len(lane):
-                            if lane[k]>0 and (lane[k] in id_lane[jj]):
-                                back_car = lane[k]
-                                break
-                            k+=1
-                        if k==len(lane):
-                            back_car = None
-                        # 前と後ろの車が両方見つからなかった場合は，2フレーム前と1フレーム前の情報を使って仮bboxを作成
-                        # ここを修正
-                        # 前と後ろの車が両方見つからなかった場合は，t-2フレームとt-1フレームの自分の移動量を見て動かす
-                        # if forward_car==None and back_car == None:
-                        #     dx = constant_speed
-                        #     dy = constant_speed
-                        #     # 横移動は考慮しないようにする
-                        #     if car_flow==0:
-                        #         dx=0
-                        #         if head_direction=='down':
-                        #             dy = abs(dy)
-                        #         else:
-                        #             dy = -1*abs(dy)
-                        #     else:
-                        #         dy=0
-                        #         if head_direction=='right':
-                        #             dx = abs(dx)
-                        #         else:
-                        #             dx = -1*abs(dx)
-                        #     xx = id_trajectory_posi_before[jj][ii][0]+dx
-                        #     yy = id_trajectory_posi_before[jj][ii][1]+dy
-                        
-                        # 前後の車がない場合は，なるべく後ろのフレームから
-                        if forward_car==None and back_car == None:
-                            # 修正
-                            # 位置予測の赤いbboxが動かなくなる時があるので，10フレーム前とかの情報を使って頑張って動かす
-                            # 10フレーム前から見ていって，なるべく古い情報を持ってくる
-                            # 2フレーム前には必ずある
-                            frag = 0
-                            for iii, k in enumerate(reversed(id_lane_before_more_10)):
-                                f = save_frame_num-iii-1 # 後ろから見ていく 9, 8, 7, 6...
-                                for jjj, kk in enumerate(k):
-                                    if old_id in kk:
-                                        idx = kk.index(old_id)
-                                        t_2 = id_trajectory_posi_before_more_10[f][jjj][idx]
-                                        frag = 1
-                                        break
-                                if frag==1:
-                                    break
-                                if f==1:
-                                    break
-                            if frag==0:
-                                continue
-
-                            # 2フレーム前にそのold_idがいない場合は諦める
-                            # ここの例が実際ある
-                            # if old_id not in id_lane_before_more[jj]:
-                            #     continue
-                            # # t-2フレーム時の基準点の座標を持ってくる
-                            # idx = id_lane_before_more[jj].index(old_id)
-                            # t_2 = id_trajectory_posi_before_more[jj][idx]
-                            # t-1フレーム時の基準点の座標を持ってくる 
-                            # これは絶対ある
-                            idx = id_lane_before[jj].index(old_id)
-                            t_1 = id_trajectory_posi_before[jj][idx]
-                            # 移動量を計算
-                            # dx = t_1[0] - t_2[0]
-                            # dy = t_1[1] - t_2[1]
-                            dx = round((t_1[0] - t_2[0])/f)
-                            dy = round((t_1[1] - t_2[1])/f)
-                            # 横移動は考慮しないようにする
-                            if car_flow==0:
-                                dx=0
-                                if head_direction=='down':
-                                    dy = abs(dy)
-                                else:
-                                    dy = -1*abs(dy)
-                            else:
-                                dy=0
-                                if head_direction=='right':
-                                    dx = abs(dx)
-                                else:
-                                    dx = -1*abs(dx)
-                            xx = id_trajectory_posi_before[jj][ii][0]+dx
-                            yy = id_trajectory_posi_before[jj][ii][1]+dy
                         # 前の車のみ見つかった場合は，前の車の移動量のみを参考にしてマイナスidを動かす
                         elif back_car == None:
                             # t-1フレーム時の前の車の基準点の座標を持ってくる
@@ -1079,6 +665,306 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                             xx = id_trajectory_posi_before[jj][ii][0]+((dx_f+dx_b)/2)
                             yy = id_trajectory_posi_before[jj][ii][1]+((dy_f+dy_b)/2)
 
+                        # 現在は，エリア外に行ったマイナスidは無視する
+                        if 0<=xx and xx<=max_x and 0<=yy and yy<=max_y:
+                            # [xx, yy]が同じ車線内に入っているかを判定
+                            #in_out = my_function.object_in_the_area2(lane_AREA, xx, yy)
+                            in_out = my_function.trans_lane_judgment((xx, yy), lane_border, car_flow)
+                            # 入っていたらid_lane[ii]にマイナスidをappend
+                            if in_out>=0:
+                                if in_out==jj:
+                                    id_lane[jj].append(minus_id)
+                                    id_trajectory_posi[jj].append([xx, yy])
+                                    # マイナスidのbboxを動かすため，t-1フレーム時のマイナスidのbbox座標を持ってくる
+                                    if minus_id in id_lane_before[jj]:    
+                                        idx = id_lane_before[jj].index(minus_id)
+                                        t_1_frame = id_lane_xyxy_before[jj][idx]
+                                    else:
+                                        idx = id_lane_before[jj].index(-1*minus_id)
+                                        t_1_frame = id_lane_xyxy_before[jj][idx]
+                                    id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
+                                    #id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
+                                    forward_back_car[minus_id] = [forward_car, back_car]
+                        # 仮bboxを動かして，それが枠外だった場合，それは廃棄する
+                        else:
+                            remove_minus_id.append(minus_id)
+                        
+                        # エリア外，または，別の車線に入ってしまった場合は，そのbbox補完は諦める（車線の中心を定めてそれを沿うようにすれば回避できる）
+
+            # remove_minus_idのidを廃棄する（マッチング成功したマイナスid,お役御免）
+            id_lane_c = id_lane.copy()
+            for del_id in remove_minus_id:
+                for jj, lane in enumerate(id_lane_c):
+                    if del_id in lane:
+                        idx = id_lane[jj].index(del_id)
+                        id_lane[jj].pop(idx)
+                        id_lane_xyxy[jj].pop(idx)
+                        id_trajectory_posi[jj].pop(idx)
+
+
+            # 車線ごとに，idを先頭順に並べる
+            #id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort2(id_lane, lane_head, id_lane_xyxy, id_trajectory_posi)
+            id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort3(head_direction, id_lane, id_lane_xyxy, id_trajectory_posi)
+
+
+            # 前フレームにいなくて，今のフレームにいるid(新id)を探す
+            # まずは，その新idが突如id_switchしただけの可能性があるので，前フレームの同じ車線内の情報をみて，あまりにも重なっているようなら，id同士を対応付ける
+            # 前の処理(iou>0.9)でやったのは，同じ車体に二つのbboxが重なった時の対応
+            # 新idを見つけたら，id_lane内のbbox補完とマッチングし，id_switchを防ぐ
+            id_lane_c = id_lane.copy()
+            remove_minus_id = [] # id_lane内のマイナスidと新規idがマッチングできたら，そのマイナスidは廃棄する
+            for jj, lane in enumerate(id_lane_c):
+                for new_ii, new_id in enumerate(lane):
+                    if new_id<0:
+                        continue
+                    # 前フレームにいなくて，今のフレームにいるid(新id)を探す
+                    if new_id not in id_lane_before[jj]:
+                        # print(id, ': 新id')
+                        # その新idのbbox補完が見つかったら，そのまま(マイナスのidがある，(例)新id:10, -10の補完がある)
+                        for lane2 in id_lane:
+                            if -1*new_id in lane2:
+                                remove_minus_id.append(-1*new_id)
+                                break
+                        else:
+                            # 前フレームの同じ車線内の情報をみて，新idのbboxと前フレームのbboxがあまりにも重なっているようなら，id同士を対応付ける
+                            frag=0
+                            for before_ii, before_bbox in enumerate(id_lane_xyxy_before[jj]):
+                                if id_lane_before[jj][before_ii]<0:
+                                    continue
+                                iou_num = my_function.calculation_iou(id_lane_xyxy[jj][new_ii], before_bbox)
+                                if iou_num>IOU_LIMIT:
+                                    removed_id.append([id_lane_before[jj][before_ii], new_id])
+                                    # 新idをid_lane_before[jj][before_ii]に切り替えたいが，すでにそのidが今のフレームにいるなら新idに関わるbboxの情報などは廃棄する．
+                                    if id_lane_before[jj][before_ii] in id_lane[jj]:
+                                        # id_lane[jj].pop(new_ii)
+                                        # id_lane_xyxy[jj].pop(new_ii)
+                                        # id_trajectory_posi[jj].pop(new_ii)
+                                        remove_minus_id.append(new_id)
+                                        # id_lane[jj][new_ii] = id_lane_before[jj][before_ii]
+                                    else:
+                                        id_lane[jj][new_ii] = id_lane_before[jj][before_ii]
+                                    frag=1
+                                    break
+                            if frag==0:
+                                # 新規idとbbox補完のiouを測って，成功した場合はマッチングしてidの対応付けをする
+                                # 本当は，一番iouが高いマイナスidを新idに割り当てたいが，時間がないのでとりあえず片っ端からやっていく
+                                # for minus_ii, minus_id in enumerate(lane):
+                                #     if minus_id<0:
+                                #         iou_num = my_function.calculation_iou(id_lane_xyxy[jj][new_ii], id_lane_xyxy[jj][minus_ii])
+                                #         if iou_num>NEW_IOU_LIMIT:
+                                #             removed_id.append([-1*minus_id, new_id])
+                                #             id_lane[jj][new_ii] = -1*minus_id
+                                #             remove_minus_id.append(minus_id)
+                                #             break
+
+                                # 補正画像を見て，新idの指定した範囲内にマイナスidがいた場合は，付け替える
+                                # 縦に車が流れている道路であれば，y座標の値に注目して，車線内の一番近くマイナスidがmatching_range内であれば，付け替える作業を行う
+                                # new_iiの前後のインデックスを見るだけでも良さそうだが，とりあえず車線内のマイナスidをすべて調べて一番近いマイナスidを探す
+                                # 出力:条件を満たした候補のマイナスidのインデックス，見つからなかった場合は-1を出力
+                                #print('ok')
+                                nearest_minus_idx = my_function.find_the_nearest_minus_id(id_lane[jj], id_trajectory_posi[jj], new_ii, car_flow, matching_range)
+                                
+
+                                if nearest_minus_idx>=0:
+                                    removed_id.append([-1*id_lane[jj][nearest_minus_idx], new_id])
+                                    id_lane[jj][new_ii] = -1*id_lane[jj][nearest_minus_idx]
+                                    remove_minus_id.append(id_lane[jj][nearest_minus_idx])
+                                    prevented_switch_id.append(-1*id_lane[jj][nearest_minus_idx])
+
+
+            #print(prevented_switch_id)
+
+
+            # 前フレームにあって，今のフレームにいないidを探す(つまり追跡が途切れたid)
+            # そのidは仮bboxをid_laneのフレームに配置する
+            # 仮bboxの位置は，前と後ろの車の情報を用いて保管する
+            # ただし，前と後ろの車が両方見つからない，かつ，そのidが，t-1フレームにいたが，t-2フレームにはいない場合(つまり1フレームにだけ登場した場合)は仕方がないので無視する
+            # 修正
+            # 今までは，今フレームと前フレームの同じ車線しか見ていなかったが，車線全体を見る
+            # じゃないと車が車線変更した時に元いた車線に位置予測の赤いbboxが残ってしまう
+            for jj, lane in enumerate(id_lane_before):
+                for ii, old_id in enumerate(lane):
+                    if old_id<0:
+                        continue
+                    # 追跡が途切れたidを発見
+                    frag=0
+                    for k in id_lane:
+                        if old_id in k:
+                            frag=1
+                    if frag==0:
+                    #if old_id not in id_lane[jj]:
+                        # そのマイナスidの前方の車を発見
+                        k = ii-1
+                        while k>=0:
+                            if lane[k]>0 and (lane[k] in id_lane[jj]):
+                                forward_car = lane[k]
+                                break
+                            k-=1
+                        if k==-1:
+                            forward_car = None
+                        # そのマイナスidの後方の車を発見
+                        k = ii+1
+                        while k<len(lane):
+                            if lane[k]>0 and (lane[k] in id_lane[jj]):
+                                back_car = lane[k]
+                                break
+                            k+=1
+                        if k==len(lane):
+                            back_car = None
+                        # 前と後ろの車が両方見つからなかった場合は，2フレーム前と1フレーム前の情報を使って仮bboxを作成
+                        # ここを修正
+
+                        # # 前後の車がない場合は，なるべく後ろのフレームから
+                        # if forward_car==None and back_car == None:
+                        #     dx = constant_speed
+                        #     dy = constant_speed
+                        #     # 横移動は考慮しないようにする
+                        #     if car_flow==0:
+                        #         dx=0
+                        #         if head_direction=='down':
+                        #             dy = abs(dy)
+                        #         else:
+                        #             dy = -1*abs(dy)
+                        #     else:
+                        #         dy=0
+                        #         if head_direction=='right':
+                        #             dx = abs(dx)
+                        #         else:
+                        #             dx = -1*abs(dx)
+                        #     xx = id_trajectory_posi_before[jj][ii][0]+dx
+                        #     yy = id_trajectory_posi_before[jj][ii][1]+dy
+
+
+                        if forward_car==None and back_car == None:
+                            # 修正
+                            # 位置予測の赤いbboxが動かなくなる時があるので，10フレーム前とかの情報を使って頑張って動かす
+                            # 10フレーム前から見ていって，なるべく古い情報を持ってくる
+                            # 2フレーム前には必ずある
+                            frag = 0
+                            for iii, k in enumerate(reversed(id_lane_before_more_10)):
+                                f = save_frame_num-iii-1 # 後ろから見ていく 9, 8, 7, 6...
+                                for jjj, kk in enumerate(k):
+                                    if old_id in kk:
+                                        idx = kk.index(old_id)
+                                        t_2 = id_trajectory_posi_before_more_10[f][jjj][idx]
+                                        frag = 1
+                                        break
+                                if frag==1:
+                                    break
+                                if f==1:
+                                    break
+                            if frag==0:
+                                continue
+
+                            # 2フレーム前にそのold_idがいない場合は諦める
+                            # ここの例が実際ある
+                            # if old_id not in id_lane_before_more[jj]:
+                            #     continue
+                            # # t-2フレーム時の基準点の座標を持ってくる
+                            # idx = id_lane_before_more[jj].index(old_id)
+                            # t_2 = id_trajectory_posi_before_more[jj][idx]
+                            # t-1フレーム時の基準点の座標を持ってくる 
+                            # これは絶対ある
+                            idx = id_lane_before[jj].index(old_id)
+                            t_1 = id_trajectory_posi_before[jj][idx]
+                            # 移動量を計算
+                            # dx = t_1[0] - t_2[0]
+                            # dy = t_1[1] - t_2[1]
+                            dx = round((t_1[0] - t_2[0])/f)
+                            dy = round((t_1[1] - t_2[1])/f)
+                            # 横移動は考慮しないようにする
+                            if car_flow==0:
+                                dx=0
+                                if head_direction=='down':
+                                    dy = abs(dy)
+                                else:
+                                    dy = -1*abs(dy)
+                            else:
+                                dy=0
+                                if head_direction=='right':
+                                    dx = abs(dx)
+                                else:
+                                    dx = -1*abs(dx)
+                            xx = id_trajectory_posi_before[jj][ii][0]+dx
+                            yy = id_trajectory_posi_before[jj][ii][1]+dy
+                        # 後ろの車のみ見つかった場合は，後ろの車の移動量のみを参考にしてマイナスidを動かす
+                        elif back_car == None:
+                            # t-1フレーム時の前の車の基準点の座標を持ってくる
+                            idx = id_lane_before[jj].index(forward_car)
+                            t_1 = id_trajectory_posi_before[jj][idx]
+                            t_1_frame = id_lane_xyxy_before[jj][idx]
+                            # 今のフレームの前の車の基準点の座標を持ってくる
+                            idx = id_lane[jj].index(forward_car)
+                            t = id_trajectory_posi[jj][idx]
+                            t_frame = id_lane_xyxy[jj][idx]
+                            # 移動量を計算
+                            dx = t[0] - t_1[0]
+                            dy = t[1] - t_1[1]
+                            # 横移動は考慮しないようにする
+                            if car_flow==0:
+                                dx=0
+                            else:
+                                dy=0
+                            xx = id_trajectory_posi_before[jj][ii][0]+dx
+                            yy = id_trajectory_posi_before[jj][ii][1]+dy
+                        elif forward_car == None:
+                            # t-1フレーム時の前の車の基準点の座標を持ってくる
+                            idx = id_lane_before[jj].index(back_car)
+                            t_1 = id_trajectory_posi_before[jj][idx]
+                            t_1_frame = id_lane_xyxy_before[jj][idx]
+                            # 今のフレームの前の車の基準点の座標を持ってくる
+                            idx = id_lane[jj].index(back_car)
+                            t = id_trajectory_posi[jj][idx]
+                            t_frame = id_lane_xyxy[jj][idx]
+                            # 移動量を計算
+                            dx = t[0] - t_1[0]
+                            dy = t[1] - t_1[1]
+                            # 横移動は考慮しないようにする
+                            if car_flow==0:
+                                dx=0
+                            else:
+                                dy=0
+                            xx = id_trajectory_posi_before[jj][ii][0]+dx
+                            yy = id_trajectory_posi_before[jj][ii][1]+dy
+                        # 前と後ろ両方の車が見つかった場合は，前と後ろの移動量の平均を基にして動かす
+                        else:
+                            # 前の車
+                            # t-1フレーム時の前の車の基準点の座標を持ってくる
+                            idx = id_lane_before[jj].index(forward_car)
+                            t_1 = id_trajectory_posi_before[jj][idx]
+                            t_1_frame = id_lane_xyxy_before[jj][idx]
+                            # 今のフレームの前の車の基準点の座標を持ってくる
+                            idx = id_lane[jj].index(forward_car)
+                            t = id_trajectory_posi[jj][idx]
+                            t_frame = id_lane_xyxy[jj][idx]
+                            # 移動量を計算
+                            dx_f = t[0] - t_1[0]
+                            dy_f = t[1] - t_1[1]
+                            # 横移動は考慮しないようにする
+                            if car_flow==0:
+                                dx_f=0
+                            else:
+                                dy_f=0
+                            # 後ろの車
+                            # t-1フレーム時の前の車の基準点の座標を持ってくる
+                            idx = id_lane_before[jj].index(back_car)
+                            t_1 = id_trajectory_posi_before[jj][idx]
+                            t_1_frame = id_lane_xyxy_before[jj][idx]
+                            # 今のフレームの前の車の基準点の座標を持ってくる
+                            idx = id_lane[jj].index(back_car)
+                            t = id_trajectory_posi[jj][idx]
+                            t_frame = id_lane_xyxy[jj][idx]
+                            # 移動量を計算
+                            dx_b = t[0] - t_1[0]
+                            dy_b = t[1] - t_1[1]
+                            # 横移動は考慮しないようにする
+                            if car_flow==0:
+                                dx_b=0
+                            else:
+                                dy_b=0
+                            xx = id_trajectory_posi_before[jj][ii][0]+((dx_f+dx_b)/2)
+                            yy = id_trajectory_posi_before[jj][ii][1]+((dy_f+dy_b)/2)
+
                         # [xx, yy]が同じ車線内に入っているかを判定
                         #in_out = my_function.object_in_the_area2(lane_AREA, xx, yy)
                         # 現在は，エリア外に行ったマイナスidは無視する
@@ -1088,21 +974,14 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                             # 入っていたらid_lane[ii]にマイナスidをappend
                             if in_out>=0:
                                 if in_out==jj:
-                                    if -1*old_id not in id_lane[jj]:
-                                        id_lane[jj].append(-1*old_id)
-                                        id_trajectory_posi[jj].append([xx, yy])
-                                        # マイナスidのbboxを動かすため，t-1フレーム時のマイナスidのbbox座標を持ってくる  
-                                        idx = id_lane_before[jj].index(old_id)
-                                        t_1_frame = id_lane_xyxy_before[jj][idx]
-                                        id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
-                                        # id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
-                                        forward_back_car[-1*old_id] = [forward_car, back_car]
-                                        # パーティクルを生成
-                                        if car_flow==0:
-                                            lost_vehicle_particle[jj][-1*old_id] = np.full((particle_num, 1), yy)
-                                        else:
-                                            lost_vehicle_particle[jj][-1*old_id] = np.full((particle_num, 1), xx)
-                                    
+                                    id_lane[jj].append(-1*old_id)
+                                    id_trajectory_posi[jj].append([xx, yy])
+                                    # マイナスidのbboxを動かすため，t-1フレーム時のマイナスidのbbox座標を持ってくる  
+                                    idx = id_lane_before[jj].index(old_id)
+                                    t_1_frame = id_lane_xyxy_before[jj][idx]
+                                    id_lane_xyxy[jj].append([t_1_frame[0], t_1_frame[1], t_1_frame[2], t_1_frame[3]])
+                                    # id_lane_xyxy[jj].append([t_1_frame[0]+dx, t_1_frame[1]+dy, t_1_frame[2]+dx, t_1_frame[3]+dy])
+                                    forward_back_car[-1*old_id] = [forward_car, back_car]
                                     
 
                         # エリア外，または，別の車線に入ってしまった場合は，そのbbox補完は諦める（車線の中心を定めてそれを沿うようにすれば回避できる）
@@ -1117,9 +996,8 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                         id_lane[jj].pop(idx)
                         id_lane_xyxy[jj].pop(idx)
                         id_trajectory_posi[jj].pop(idx)
-                        if del_id in lost_vehicle_particle[jj]:
-                            lost_vehicle_particle[jj].pop(del_id)
-            
+
+
             # 車線ごとに，idを先頭順に並べる
             #id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort2(id_lane, lane_head, id_lane_xyxy, id_trajectory_posi)
             id_lane, id_lane_xyxy, id_trajectory_posi= my_function.id_lane_sort3(head_direction, id_lane, id_lane_xyxy, id_trajectory_posi)
@@ -1133,12 +1011,10 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 id_lane_xyxy_before_more = id_lane_xyxy.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
                 id_trajectory_posi_before_more = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
             elif detection_bigin_frame==2:
                 id_lane_before = id_lane.copy()
                 id_lane_xyxy_before = id_lane_xyxy.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
             else:
                 id_lane_before_more = id_lane_before.copy()
                 id_lane_before = id_lane.copy()
@@ -1146,8 +1022,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 id_lane_xyxy_before = id_lane_xyxy.copy()
                 id_trajectory_posi_before_more = id_trajectory_posi_before.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
-
 
             id_lane_before_more_10.insert(0, id_lane)
             id_lane_xyxy_before_more_10.insert(0, id_lane_xyxy)
@@ -1192,7 +1066,7 @@ with open(DETECTION_FILE_NAME, 'r') as file:
             if output_do_or_not:
                 for jj, lane in enumerate(id_lane):
                     for ii, id2 in enumerate(lane):
-                        # bbox描画
+                        # bbox描画し
                         img = my_function.write_bbox_frame_id2_big(img, id2, inverse_M, id_trajectory_posi[jj][ii], prevented_switch_id, (int(id_lane_xyxy[jj][ii][0]),int(id_lane_xyxy[jj][ii][1])), (int(id_lane_xyxy[jj][ii][2]),int(id_lane_xyxy[jj][ii][3])), a, b, a2, b2, a3, b3, a4, b4)
                         #img = my_function.write_bbox_frame_id2_big(img, id2, inverse_M, id_trajectory_posi[jj][ii], prevented_switch_id, (int(id_lane_xyxy[jj][ii][0]),int(id_lane_xyxy[jj][ii][1])), (int(id_lane_xyxy[jj][ii][2]),int(id_lane_xyxy[jj][ii][3])))
                         # #正のidなら基準点を打つ
@@ -1237,8 +1111,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                             total_id.append(new_id)
                             #vehicle_type.append(int(class_num[i][0]))
 
-            # if frame_idx%100==0:
-            #     print('total_id: '+str(len(total_id)))
             ###################################################################################
             # print(len(id_lane[0]))
             # # 同時に，そのidのbbox_frame(左上，右下)の情報を保存
@@ -1254,10 +1126,12 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 img = my_function.write_count_text_big(img, len(total_id))
                 #img = my_function.write_count_text_big2(img, len(total_id))
 
+
+
                 # print(id_lane)
                 # print(id_trajectory_posi)
                 # 補正画像の作成し，出力画像とマージ
-                img = my_function.merging_trans_image7(img, id_lane, id_trajectory_posi, prevented_switch_id, max_x, max_y, car_flow, lane_border, lost_vehicle_particle)
+                img = my_function.merging_trans_image5(frame_idx, img, id_lane, id_trajectory_posi, prevented_switch_id, max_x, max_y, car_flow, lane_border, forward_back_car, head_direction, trans_lane, trans_lane_look)
                 
                 # これまでの結果を反映した画像を保存
                 if frame_idx%output_image_space==0:
@@ -1718,12 +1592,10 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 id_lane_xyxy_before_more = id_lane_xyxy.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
                 id_trajectory_posi_before_more = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
             elif detection_bigin_frame==2:
                 id_lane_before = id_lane.copy()
                 id_lane_xyxy_before = id_lane_xyxy.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
             else:
                 id_lane_before_more = id_lane_before.copy()
                 id_lane_before = id_lane.copy()
@@ -1731,7 +1603,6 @@ with open(DETECTION_FILE_NAME, 'r') as file:
                 id_lane_xyxy_before = id_lane_xyxy.copy()
                 id_trajectory_posi_before_more = id_trajectory_posi_before.copy()
                 id_trajectory_posi_before = id_trajectory_posi.copy()
-                lost_vehicle_particle_before = lost_vehicle_particle.copy()
 
             id_lane_before_more_10.insert(0, id_lane)
             id_lane_xyxy_before_more_10.insert(0, id_lane_xyxy)
